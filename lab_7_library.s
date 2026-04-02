@@ -18,8 +18,10 @@
 	.global gpio_interrupt_init
 	.global uart_interrupt_init
 ;	.global simple_read_character
+	.global lookup_table
 
 U0FR: 	.equ 0x18	; UART0 Flag Register
+ptr_to_lookup_table:	.word lookup_table
 
 
 uart_init:
@@ -261,6 +263,21 @@ output_string:
     MOV r4, r0		; Initialize cursor
 output_str_loop:
 	LDRB r5, [r4]		; Load character at cursor to r5
+
+	cmp r5, #0x10		; Check if we need to go to lookup table
+	blt not_ansi
+	cmp r5, #0x13		; Need to keep update this as we add escape sequences
+	bgt not_ansi
+
+	sub r5, r5, #0x10	; Calculate index for lookup table
+	ldr r6, ptr_to_lookup_table
+	lsl r5, r5, #2		; Multiply r5 by 4 because a .word is 4 bytes long
+	ldr r0, [r6, r5]	; r0 holds address to ANSI escape sequence
+	bl output_ansi_string
+	add r4, r4, #1		; Increment cursor
+	b output_str_loop
+
+not_ansi:
 	MOV r0, r5		; Store character in r0 for output_character
 	BL output_character
 	ADD r4, #1		; Increment cursor
@@ -268,6 +285,21 @@ output_str_loop:
 	BNE output_str_loop
 
 	POP {r4-r12,lr}  	; Restore registers from stack
+	MOV pc, lr
+
+output_ansi_string:
+	PUSH {r4-r12, lr}
+
+	mov r4, r0		; Initialize cursor
+ansi_loop:
+	ldrb r0, [r4], #1		; Load character and increment cursor
+	cmp r0, #0
+	beq exit_output_ansi_string		; If char is null terminator, exit subroutine
+	bl output_character		; Otherwise output character
+	b ansi_loop
+exit_output_ansi_string:
+
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 read_from_push_btns:
