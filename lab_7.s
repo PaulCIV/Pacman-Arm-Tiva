@@ -7,6 +7,7 @@
 	.global cursor_pos
 	.global pacman_string
 	.global lookup_table
+	.global pacman_pos
 	.global pacman_dir
 
 
@@ -32,7 +33,8 @@ lookup_table:
 		.word ansi_yellow
 
 
-pacman_dir:		.byte 1		; Direction for pacman movement. 0=up, 1=right, 2=down 3=left
+pacman_pos:		.byte 24, 4		; Pacman position in line, column format
+pacman_dir:		.byte 0, 1		; Direction for pacman movement in line, column format to make cursor movement logic cleaner.
 
 
 	.text
@@ -40,8 +42,12 @@ pacman_dir:		.byte 1		; Direction for pacman movement. 0=up, 1=right, 2=down 3=l
 	.global uart_init
 	.global gpio_btn_and_LED_init
 	.global output_string
+	.global gpio_interrupt_init
+	.global uart_interrupt_init
 	.global timer_interrupt_init
 	.global int2str
+	.global output_character
+	.global simple_read_character
 
 	.global Timer_Handler
 	.global UART0_Handler
@@ -52,6 +58,7 @@ pacman_dir:		.byte 1		; Direction for pacman movement. 0=up, 1=right, 2=down 3=l
 
 
 ptr_to_pacman_string:		.word pacman_string
+ptr_to_pacman_pos:			.word pacman_pos
 ptr_to_pacman_dir:			.word pacman_dir
 ptr_to_cursor_pos:			.word cursor_pos
 
@@ -69,15 +76,24 @@ lab7:
 		; Initialization
 		bl uart_init
 		bl gpio_btn_and_LED_init
+		bl gpio_interrupt_init
+		bl uart_interrupt_init
+		bl timer_interrupt_init
 
-		; Move cursor
-		mov r0, #24
-		mov r1, #4
+		; Load pacman position
+		ldr r2, ptr_to_pacman_pos	; Initialize pointer to pacman opsition
+		ldrb r0, [r2], #1			; r0 = pacman line
+		ldrb r1, [r2]				; r1 = pacman column
+
 		bl move_cursor
 
 		; Print pacman
 		ldr r0, ptr_to_pacman_string
 		bl output_string
+
+lab7_main_loop:
+
+		b lab7_main_loop
 
 
 		POP {r4-r12, lr}
@@ -87,7 +103,14 @@ lab7:
 Timer_Handler:
 		PUSH {r4-r12, lr}
 
+		mov  r0, #0x0024		; Clear the interrupt pin
+		movt r0, #0x4003
+		ldr r1, [r0]
+		orr r1, r1, #1
+		str r1, [r0]
 
+
+		bl move_pacman		; Update pacman position and redraw
 
 
 		POP {r4-r12, lr}
@@ -96,6 +119,51 @@ Timer_Handler:
 
 UART0_Handler:
         PUSH    {r4-r12, lr}
+
+        ; clear UART receive interrupt by writing bit 4 to UARTICR
+        MOV     r0, #0xC044                          ; UARTICR address
+        MOVT    r0, #0x4000
+        MOV     r1, #1                               ; start with 1
+        LSL     r1, r1, #4                           ; shift to bit 4 => interrupt clear bit
+        STR     r1, [r0]
+
+		bl simple_read_character	; Stores pressed char in r0
+		cmp r0, #0x77		; 'w'
+		beq update_dir_up
+		cmp r0, #0x61		; 'a'
+		beq update_dir_left
+		cmp r0, #0x73		; 's'
+		beq update_dir_down
+		cmp r0, #0x64		; 'd'
+		beq update_dir_right
+		b not_wasd
+
+update_dir_up:
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #-1
+		mov r2, #0
+		b store_new_dir
+update_dir_left:
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #0
+		mov r2, #-1
+		b store_new_dir
+update_dir_down:
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #1
+		mov r2, #0
+		b store_new_dir
+update_dir_right:
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #0
+		mov r2, #1
+		b store_new_dir
+store_new_dir:
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+not_wasd:
+
         POP     {r4-r12, lr}
         BX      lr
 
@@ -153,6 +221,49 @@ find_null_loop:
 
 		POP {lr}
 		MOV pc, lr
+
+
+move_pacman:
+		PUSH {r4-r12, lr}
+
+		; Load pacman position
+		ldr r2, ptr_to_pacman_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = column pos
+
+		mov r6, r0		; Preserve r0, r1 before move_cursor
+		mov r7, r1
+
+		; Erase current pacman
+		bl move_cursor
+		mov r0, #0x20
+		bl output_character
+
+		; Load pacman direction
+		ldr r3, ptr_to_pacman_dir
+		ldrsb r4, [r3]			; r4 = line dir
+		ldrsb r5, [r3, #1]		; r5 = column dir
+
+		; Update pacman position based on direction
+		add r0, r6, r4
+		add r1, r7, r5
+		strb r0, [r2]
+		strb r1, [r2, #1]
+
+		; Load pacman position
+		ldr r2, ptr_to_pacman_pos	; Initialize pointer to pacman opsition
+		ldrb r0, [r2]				; r0 = pacman line
+		ldrb r1, [r2, #1]				; r1 = pacman column
+
+		bl move_cursor
+
+		; Print pacman
+		ldr r0, ptr_to_pacman_string
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
 
 check_wall:
 		PUSH {r4-r12, lr}

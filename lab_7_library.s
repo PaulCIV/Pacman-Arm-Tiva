@@ -18,7 +18,7 @@
 	.global gpio_interrupt_init
 	.global uart_interrupt_init
 	.global timer_interrupt_init
-;	.global simple_read_character
+	.global simple_read_character
 	.global lookup_table
 
 U0FR: 	.equ 0x18	; UART0 Flag Register
@@ -727,8 +727,8 @@ wait_timer_clock:
 
 		mov  r0, #0x0028		; Setup interval period via GPTMTAILR
 		movt r0, #0x4003
-		mov  r1, #0x003D		; 4,000,000 in hex. 0.25 second period
-		movt r1, #0x0900
+		mov  r1, #0x0900		; 4,000,000 in hex. 0.25 second period
+		movt r1, #0x003D
 		str r1, [r0]
 
 		mov  r0, #0x0018		; Enable timer to interrupt processor via GPTMIMR
@@ -757,19 +757,15 @@ wait_timer_clock:
 
 
 
-;simple_read_character:
-;		PUSH {r4-r12, lr}
-;
-;		ldr r5, ptr_to_mydata	; Initialize pointer to interrupt flags
-;		ldrb r0, [r5, #UART_EV]	; Check if UART interrupt happened
-;		cmp r0, #0
-;		beq exit_simple_read_character
-;
-;		ldrb r0, [r5, #UART_CH]	; If interrupt happened, return character to r0
-;
-;exit_simple_read_character:
-;		POP {r4-r12, lr}
-;		MOV pc, lr
+simple_read_character:
+		PUSH {r4-r12, lr}
+
+		mov  r1, #0xC000	; Simply load what is in UART data register and return to r0
+		movt r1, #0x4000
+		ldrb r0, [r1]
+
+		POP {r4-r12, lr}
+		MOV pc, lr
 
 
 
