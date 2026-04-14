@@ -151,9 +151,8 @@ Timer_Handler:
 		orr r1, r1, #1
 		str r1, [r0]
 
-
-		bl move_pacman		; Update pacman position and redraw
 		bl move_ghosts		; Update ghosts' position and redraw
+		bl move_pacman		; Update pacman position and redraw
 
 
 		POP {r4-r12, lr}
