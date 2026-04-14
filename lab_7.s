@@ -1,40 +1,67 @@
 	.data
 
-	.global ansi_red
-	.global ansi_green
-	.global ansi_blue
+	.global ansi_bold
 	.global ansi_yellow
+	.global ansi_red
+	.global ansi_orange
+	.global ansi_blue
+	.global ansi_pink
 	.global cursor_pos
 	.global pacman_string
 	.global lookup_table
 	.global pacman_pos
 	.global pacman_dir
+	.global blinky_string
+	.global clyde_string
+	.global inky_string
+	.global pinky_string
 
 
 
-; ANSI escape sequences for colors
-ansi_red:		.string 0x1B, "[38;5;9m", 0
-ansi_green:		.string 0x1B, "[38;5;10m", 0
-ansi_blue:		.string 0x1B, "[38;5;12m", 0
+; ANSI escape sequences for bold and colors
+ansi_bold:		.string 0x1B, "[1m", 0
 ansi_yellow:	.string 0x1B, "[38;5;11m", 0
+ansi_red:		.string 0x1B, "[38;5;9m", 0
+ansi_orange:	.string 0x1B, "[38;5;202m", 0
+ansi_blue:		.string 0x1B, "[38;5;25m", 0
+ansi_pink:		.string 0x1B, "[38;5;207m", 0
 
 ; ANSI escape sequence for cursor position
 cursor_pos:		.string 0x1B, "[123;456H", 0
 
 
-pacman_string:	.string 0x13, '<', 0
+pacman_string:	.string 0x10, 0x11, '<', 0
+blinky_string:	.string 0x10, 0x12, 'A', 0	; red ghost
+clyde_string:	.string 0x10, 0x13, 'A', 0	; orange ghost
+inky_string:	.string 0x10, 0x14, 'A', 0	; blue ghost
+pinky_string:	.string 0x10, 0x15, 'A', 0	; pink ghost
 
 
 ; Lookup table that references ANSI escape sequences
 lookup_table:
-		.word ansi_red
-		.word ansi_green
-		.word ansi_blue
+		.word ansi_bold
 		.word ansi_yellow
+		.word ansi_red
+		.word ansi_orange
+		.word ansi_blue
+		.word ansi_pink
 
 
-pacman_pos:		.byte 24, 4		; Pacman position in line, column format
+pacman_pos:		.byte 10, 4		; Pacman position in line, column format
 pacman_dir:		.byte 0, 1		; Direction for pacman movement in line, column format to make cursor movement logic cleaner.
+
+; Positions and directions for ghosts
+blinky_pos:		.byte 11, 4
+blinky_dir:		.byte 0, 1
+
+clyde_pos:		.byte 12, 4
+clyde_dir:		.byte 0, 1
+
+inky_pos:		.byte 13, 4
+inky_dir:		.byte 0, 1
+
+pinky_pos:		.byte 14, 4
+pinky_dir:		.byte 0, 1
 
 
 	.text
@@ -57,17 +84,32 @@ pacman_dir:		.byte 0, 1		; Direction for pacman movement in line, column format 
 	.global ptr_to_pacman_string
 
 
+ptr_to_cursor_pos:			.word cursor_pos
 ptr_to_pacman_string:		.word pacman_string
 ptr_to_pacman_pos:			.word pacman_pos
 ptr_to_pacman_dir:			.word pacman_dir
-ptr_to_cursor_pos:			.word cursor_pos
+
+ptr_to_blinky_string:		.word blinky_string
+ptr_to_blinky_pos:			.word blinky_pos
+ptr_to_blinky_dir:			.word blinky_dir
+ptr_to_clyde_string:		.word clyde_string
+ptr_to_clyde_pos:			.word clyde_pos
+ptr_to_clyde_dir:			.word clyde_dir
+ptr_to_inky_string:			.word inky_string
+ptr_to_inky_pos:			.word inky_pos
+ptr_to_inky_dir:			.word inky_dir
+ptr_to_pinky_string:		.word pinky_string
+ptr_to_pinky_pos:			.word pinky_pos
+ptr_to_pinky_dir:			.word pinky_dir
 
 
 ; Offset used for indexing in lookup table
-RED:		.equ 0x10
-GREEN:		.equ 0x11
-BLUE:		.equ 0x12
-YELLOW:		.equ 0x13
+BOLD:		.equ 0x10
+YELLOW:		.equ 0x11
+RED:		.equ 0x12
+ORANGE:		.equ 0x13
+BLUE:		.equ 0x14
+PINK:		.equ 0x15
 
 
 lab7:
@@ -111,6 +153,7 @@ Timer_Handler:
 
 
 		bl move_pacman		; Update pacman position and redraw
+		bl move_ghosts		; Update ghosts' position and redraw
 
 
 		POP {r4-r12, lr}
@@ -250,15 +293,77 @@ move_pacman:
 		strb r0, [r2]
 		strb r1, [r2, #1]
 
-		; Load pacman position
-		ldr r2, ptr_to_pacman_pos	; Initialize pointer to pacman opsition
-		ldrb r0, [r2]				; r0 = pacman line
-		ldrb r1, [r2, #1]				; r1 = pacman column
-
-		bl move_cursor
-
 		; Print pacman
+		bl move_cursor
 		ldr r0, ptr_to_pacman_string
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+move_ghosts:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_blinky_pos
+		ldr r1, ptr_to_blinky_dir
+		ldr r2, ptr_to_blinky_string
+		bl move_oneghost
+
+		ldr r0, ptr_to_clyde_pos
+		ldr r1, ptr_to_clyde_dir
+		ldr r2, ptr_to_clyde_string
+		bl move_oneghost
+
+		ldr r0, ptr_to_inky_pos
+		ldr r1, ptr_to_inky_dir
+		ldr r2, ptr_to_inky_string
+		bl move_oneghost
+
+		ldr r0, ptr_to_pinky_pos
+		ldr r1, ptr_to_pinky_dir
+		ldr r2, ptr_to_pinky_string
+		bl move_oneghost
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; r0 = ghost pos address
+; r1 = ghost dir address
+; r2 = ghost string address
+move_oneghost:
+		PUSH {r4-r12, lr}
+
+		mov r4, r0		; r4 = ghost pos address
+		mov r9, r1		; r6 = ghost dir address
+
+		ldrb r0, [r4]		; r0 = line pos
+		ldrb r1, [r4, #1]	; r1 = column pos
+
+		mov r5, r0		; Preserve r0, r1 before move_cursor
+		mov r6, r1
+
+		; Erase current ghost
+		bl move_cursor
+		;;;;;;;;;;;;;;;;; NEED TO CHANGE THIS LINE TO RESTORE PELLETS
+		mov r0, #0x20
+		;;;;;;;;;;;;;;;;;
+		bl output_character
+
+		; Load ghost direction
+		ldrsb r7, [r9]		; r7 = line dir
+		ldrsb r8, [r9, #1]	; r8 = column dir
+
+		; Update ghost position based on direction
+		add r0, r5, r7
+		add r1, r6, r8
+		strb r0, [r4]
+		strb r1, [r4, #1]
+
+		; Print ghost
+		bl move_cursor
+		mov r0, r2
 		bl output_string
 
 		POP {r4-r12, lr}
