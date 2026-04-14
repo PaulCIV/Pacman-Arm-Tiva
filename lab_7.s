@@ -289,6 +289,23 @@ move_pacman:
 		; Update pacman position based on direction
 		add r0, r6, r4
 		add r1, r7, r5
+
+		; Wrap-around logic
+		; If beyond right boundary, set column to 1
+		cmp r1, #28
+		ble pacman_no_rightwrap
+		mov r1, #1
+		b exit_pacman_wrap
+		; If not beyond right boundary, check left boundary
+pacman_no_rightwrap:
+		cmp r1, #1
+		bge exit_pacman_wrap
+		mov r1, #28
+		b exit_pacman_wrap
+
+
+exit_pacman_wrap:
+		; Store final pacman position
 		strb r0, [r2]
 		strb r1, [r2, #1]
 
