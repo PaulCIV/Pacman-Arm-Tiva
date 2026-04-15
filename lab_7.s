@@ -63,6 +63,10 @@ inky_dir:		.byte 0, 1
 pinky_pos:		.byte 14, 4
 pinky_dir:		.byte 0, 1
 
+; How many lives player has left
+lives:			.byte 4
+is_game_over:	.byte 0
+
 
 	.text
 	.global lab7
@@ -101,6 +105,9 @@ ptr_to_inky_dir:			.word inky_dir
 ptr_to_pinky_string:		.word pinky_string
 ptr_to_pinky_pos:			.word pinky_pos
 ptr_to_pinky_dir:			.word pinky_dir
+
+ptr_to_lives:				.word lives
+ptr_to_is_game_over:		.word is_game_over
 
 
 ; Offset used for indexing in lookup table
@@ -152,8 +159,20 @@ Timer_Handler:
 		str r1, [r0]
 
 		bl move_ghosts		; Update ghosts' position and redraw
+		bl check_ghost_coll
 		bl move_pacman		; Update pacman position and redraw
+		bl check_ghost_coll	; Checking twice to prevent jumping over
 
+
+		;;;;;;;;;; Output lives count. For debugging
+		mov r0, #35
+		mov r1, #1
+		bl move_cursor
+		ldr r0, ptr_to_lives
+		ldrb r1, [r0]
+		add r0, r1, #48
+		bl output_character
+		;;;;;;;;;;
 
 		POP {r4-r12, lr}
 		BX lr
@@ -290,7 +309,111 @@ move_pacman:
 		add r0, r6, r4
 		add r1, r7, r5
 
-		; Wrap-around logic
+		bl check_pacman_wrap
+
+		; Store final pacman position
+		ldr r2, ptr_to_pacman_pos
+		strb r0, [r2]
+		strb r1, [r2, #1]
+
+		; Print pacman
+		bl move_cursor
+		ldr r0, ptr_to_pacman_string
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Checks if pacman collided with a ghost.
+; r0 = pacman line pos, r1 = pacman column pos
+check_ghost_coll:
+		PUSH {r4-r12, lr}
+
+		ldr r6, ptr_to_pacman_pos
+		ldrb r4, [r6]		; r4 = pacman line pos
+		ldrb r5, [r6, #1]	; r5 = pacman column pos
+
+		ldr r0, ptr_to_blinky_pos
+		ldrb r1, [r0]		; r1 = blinky line pos
+		ldrb r2, [r0, #1]	; r2 = blinky col pos
+		cmp r4, r1			; Check if positions match
+		bne blinky_nocoll
+		cmp r5, r2
+		bne blinky_nocoll
+		bl pacman_dead		; Pacman position = blinky position
+blinky_nocoll:				; No collision with blinky
+		ldr r0, ptr_to_clyde_pos
+		ldrb r1, [r0]		; r1 = clyde line pos
+		ldrb r2, [r0, #1]	; r2 = clyde col pos
+		cmp r4, r1			; Check if positions match
+		bne clyde_nocoll
+		cmp r5, r2
+		bne clyde_nocoll
+		bl pacman_dead		; Pacman position = clyde position
+clyde_nocoll:				; No collision with clyde
+		ldr r0, ptr_to_inky_pos
+		ldrb r1, [r0]		; r1 = inky line pos
+		ldrb r2, [r0, #1]	; r2 = inky col pos
+		cmp r4, r1			; Check if positions match
+		bne inky_nocoll
+		cmp r5, r2
+		bne inky_nocoll
+		bl pacman_dead		; Pacman position = inky position
+inky_nocoll:				; No collision with inky
+		ldr r0, ptr_to_pinky_pos
+		ldrb r1, [r0]		; r1 = pinky line pos
+		ldrb r2, [r0, #1]	; r2 = pinky col pos
+		cmp r4, r1			; Check if positions match
+		bne pinky_nocoll
+		cmp r5, r2
+		bne pinky_nocoll
+		bl pacman_dead		; Pacman position = pinky position
+pinky_nocoll:				; No collision with pinky
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+pacman_dead:
+		PUSH {r4-r12, lr}
+
+		; Decrement lives
+		ldr r4, ptr_to_lives
+		ldrb r5, [r4]
+		sub r5, r5, #1
+		strb r5, [r4]
+
+		; If lives = 0, set game over flag. Otherwise reset board
+		cmp r5, #0
+		bne not_game_over
+		mov r6, #1
+		ldr r4, ptr_to_is_game_over
+		strb r6, [r4]
+		b exit_pacman_dead
+
+not_game_over:
+		bl reset_board
+exit_pacman_dead:
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+reset_board:
+		PUSH {r4-r12, lr}
+
+
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Checks if pacman needs to wrap-around map
+; r0 = pacman line pos, r1 = pacman column pos
+check_pacman_wrap:
+		PUSH {lr}
+
 		; If beyond right boundary, set column to 1
 		cmp r1, #28
 		ble pacman_no_rightwrap
@@ -304,16 +427,7 @@ pacman_no_rightwrap:
 		b exit_pacman_wrap
 exit_pacman_wrap:
 
-		; Store final pacman position
-		strb r0, [r2]
-		strb r1, [r2, #1]
-
-		; Print pacman
-		bl move_cursor
-		ldr r0, ptr_to_pacman_string
-		bl output_string
-
-		POP {r4-r12, lr}
+		POP {lr}
 		MOV pc, lr
 
 
