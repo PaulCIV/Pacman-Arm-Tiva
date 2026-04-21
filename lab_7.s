@@ -97,6 +97,7 @@ score_buffer:		.string "000000", 0
 timer_interval:		.word 0x003D0900	; Interval between ticks
 power_pellet_time:	.byte 0				; Time left until power pellet wears off in seconds
 tick_count:			.byte 0				; How many ticks passed in current second
+ghosts_eaten:		.byte 0
 
 
 ; Initial board setup
@@ -235,6 +236,7 @@ ptr_to_black_bg:			.word black_bg
 ptr_to_timer_interval:		.word timer_interval
 ptr_to_power_pellet_time:	.word power_pellet_time
 ptr_to_tick_count:			.word tick_count
+ptr_to_ghosts_eaten:		.word ghosts_eaten
 
 
 ; Offset used for indexing in lookup table
@@ -653,7 +655,7 @@ eat_normal_pellet:
 		ldr r0, ptr_to_score		; Load score
 		ldr r1, [r0]
 		add r0, r1, #10				; Update score
-		bl update_score_string
+		bl update_score
 		b check_pellet_exit
 eat_power_pellet:
 		mov r2, #0x20				; 0x20 = ' '
@@ -661,7 +663,7 @@ eat_power_pellet:
 		ldr r0, ptr_to_score		; Load score
 		ldr r1, [r0]
 		add r0, r1, #50				; Update score
-		bl update_score_string
+		bl update_score
 
 		ldr r0, ptr_to_power_pellet_time	; Set remaining power pellet time to 15
 		mov r1, #15
@@ -669,6 +671,9 @@ eat_power_pellet:
 
 		ldr r0, ptr_to_tick_count			; Initialize tick counter to 0
 		mov r1, #0
+		strb r1, [r0]
+
+		ldr r0, ptr_to_ghosts_eaten			; Initialize ghosts eaten count to 0
 		strb r1, [r0]
 check_pellet_exit:
 
@@ -678,7 +683,7 @@ check_pellet_exit:
 
 ; Updates score string in memory to given score
 ; r0 = new score
-update_score_string:
+update_score:
 		PUSH {r4-r12, lr}
 		mov  r1, #0x423F			; 0xF423F = 999999
 		movt r1, #0x000F
@@ -712,13 +717,13 @@ update_score_string:
 		add r0, r0, r1				; Move pointer to starting pos
 
 		ldr r1, ptr_to_score_buffer
-update_score_string_loop:			; Copy buffer to score_string
+update_score_loop:			; Copy buffer to score_string
 		ldrb r2, [r1], #1
 		cmp r2, #0					; If null char, exit loop
-		beq update_score_string_done
+		beq update_score_done
 		strb r2, [r0], #1
-		b update_score_string_loop
-update_score_string_done:
+		b update_score_loop
+update_score_done:
 		mov r0, #2					; pos for score on board
 		mov r1, #12
 		bl move_cursor
@@ -814,10 +819,10 @@ check_ghost_coll:
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = blinky position
-		ldr r0, ptr_to_blinky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_blinky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_blinky_spawn
 		ldr r2, ptr_to_blinky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 blinky_nocoll:				; No collision with blinky
 		ldr r0, ptr_to_clyde_pos
@@ -831,10 +836,10 @@ blinky_nocoll:				; No collision with blinky
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = clyde position
-		ldr r0, ptr_to_clyde_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_clyde_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_clyde_spawn
 		ldr r2, ptr_to_clyde_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 clyde_nocoll:				; No collision with clyde
 		ldr r0, ptr_to_inky_pos
@@ -848,10 +853,10 @@ clyde_nocoll:				; No collision with clyde
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = inky position
-		ldr r0, ptr_to_inky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_inky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_inky_spawn
 		ldr r2, ptr_to_inky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 inky_nocoll:				; No collision with inky
 		ldr r0, ptr_to_pinky_pos
@@ -865,10 +870,10 @@ inky_nocoll:				; No collision with inky
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = pinky position
-		ldr r0, ptr_to_pinky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_pinky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_pinky_spawn
 		ldr r2, ptr_to_pinky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 pinky_nocoll:				; No collision with pinky
 		b exit_check_ghost_coll
@@ -885,7 +890,7 @@ exit_check_ghost_coll:
 ; r0 = ptr to ghost pos
 ; r1 = ptr to ghost spawn
 ; r2 = ptr to ghost dir
-ghost_eaten:
+eat_ghost:
 		PUSH {r4-r12, lr}
 
 		; Teleport ghost to its spawn
@@ -899,6 +904,20 @@ ghost_eaten:
 		mov r5, #0
 		strb r4, [r2]
 		strb r5, [r2, #1]
+
+		; Update score
+		ldr r0, ptr_to_ghosts_eaten
+		ldrb r1, [r0]		; r1 = number of ghosts eaten
+
+		mov r2, #100		; Calculate ghost point
+		lsl r2, r2, r1
+		add r1, r1, #1		; Increment ghost eaten count
+		strb r1, [r0]
+
+		ldr r1, ptr_to_score	; Load score
+		ldr r0, [r1]
+		add r0, r0, r2			; Update and store new score
+		bl update_score
 
 		POP {r4-r12, lr}
 		MOV pc, lr
