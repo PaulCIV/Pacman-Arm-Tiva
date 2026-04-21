@@ -20,12 +20,16 @@
 
 ; ANSI escape sequences for bold and colors
 ansi_bold:		.string 0x1B, "[1m", 0
-ansi_yellow:	.string 0x1B, "[38;5;11m", 0
-ansi_red:		.string 0x1B, "[38;5;9m", 0
+ansi_yellow:	.string 0x1B, "[38;5;226m", 0
+ansi_red:		.string 0x1B, "[38;5;196m", 0
 ansi_orange:	.string 0x1B, "[38;5;202m", 0
 ansi_cyan:		.string 0x1B, "[38;5;25m", 0
 ansi_pink:		.string 0x1B, "[38;5;207m", 0
-ansi_blue:		.string 0x1B, "[38;5;12m", 0
+ansi_blue:		.string 0x1B, "[38;5;26m", 0
+ansi_path:		.string 0x1B, "[48;5;110m", 0
+ansi_gate:		.string 0x1B, "[48;5;51m", 0
+ansi_wall:		.string 0x1B, "[48;5;16m", 0
+ansi_white:		.string 0x1B, "[38;5;231m", 0
 
 ; ANSI escape sequence for cursor position
 cursor_pos:		.string 0x1B, "[123;456H", 0
@@ -37,6 +41,11 @@ clyde_string:	.string 0x10, 0x13, 'A', 0	; orange ghost
 inky_string:	.string 0x10, 0x14, 'A', 0	; cyan ghost
 pinky_string:	.string 0x10, 0x15, 'A', 0	; pink ghost
 scared_string:	.string 0x10, 0x16, 'W', 0	; scared ghosts
+path_string:	.string 0x10, 0x17, 0		; path
+gate_string:	.string 0x10, 0x18, ' ', 0	; ghost spawn gate
+wall_string:	.string 0x10, 0x19, ' ', 0	; wall(black background)
+white_string:	.string 0x10, 0x1A, 0		; white foreground
+black_bg:		.string 0x10, 0x19, 0		; black background
 
 
 ; Lookup table that references ANSI escape sequences
@@ -48,64 +57,95 @@ lookup_table:
 		.word ansi_cyan
 		.word ansi_pink
 		.word ansi_blue
+		.word ansi_path
+		.word ansi_gate
+		.word ansi_wall
+		.word ansi_white
 
 
-pacman_pos:		.byte 16, 14
-pacman_dir:		.byte 0, 1
+pacman_pos:		.byte 26, 15	; Pacman position in line, column format
+pacman_dir:		.byte 0, 1		; Direction for pacman movement in line, column format to make cursor movement logic cleaner.
 
 ; Positions and directions for ghosts
-blinky_pos:			.byte 11, 13
+blinky_pos:			.byte 15, 12
 blinky_dir:			.byte 0, 1
 
-clyde_pos:			.byte 11, 16
-clyde_dir:			.byte 0, -1
+clyde_pos:			.byte 15, 13
+clyde_dir:			.byte 0, 1
 
-inky_pos:			.byte 12, 13
+inky_pos:			.byte 15, 16
 inky_dir:			.byte 0, 1
 
-pinky_pos:			.byte 12, 16
-pinky_dir:			.byte 0, -1
+pinky_pos:			.byte 15, 17
+pinky_dir:			.byte 0, 1
 
 ; Coordinates for where each ghost will go when eaten by pacman
-blinky_spawn:		.byte 11, 13
-clyde_spawn:		.byte 11, 16
-inky_spawn:			.byte 12, 13
-pinky_spawn:		.byte 12, 16
+blinky_spawn:		.byte 15, 12
+clyde_spawn:		.byte 15, 13
+inky_spawn:			.byte 15, 16
+pinky_spawn:		.byte 15, 17
+
+;reset positions used by restart
+pacman_start:		.byte 26, 15
+blinky_start:		.byte 15, 12
+clyde_start:		.byte 15, 13
+inky_start:			.byte 15, 16
+pinky_start:		.byte 15, 17
+
 
 lives:				.byte 4
 is_game_over:		.byte 0
-power_pellet_time:	.byte 0		; Time left until power pellet wears off in number of game ticks(not seconds)
+game_paused:		.byte 1
 
-pacman_start:		.byte 16, 14			;Pac-Man's reset/start row and column
-blinky_start:		.byte 11, 13			;Blinky's reset/start row and column
-clyde_start:		.byte 11, 16			;Clyde's reset/start row and column
-inky_start:			.byte 12, 13			;Inky's reset/start row and column
-pinky_start:		.byte 12, 16			;Pinky's reset/start row and column
+score:				.word 0
+score_string:		.string "000000", 0
+score_buffer:		.string "000000", 0
 
-board_template:								
-	.ascii "############################"		; row 1 all wall 
-	.ascii "#............##............#"		; row 2 
-	.ascii "#.####.#####.##.#####.####.#"		; row 3 
-	.ascii "#..........................#"		; row 4 
-	.ascii "#.####.##.########.##.####.#"		; row 5 
-	.ascii "#......##....##....##......#"		; row 6 
-	.ascii "######.##### ## #####.######"		; row 7 with the ghost-box 
-	.ascii "   #.##     ##.#   "		; row 8 with side openings
-	.ascii "######.## ### ### ##.######"		; row 9 
-	.ascii "..........#  #.......... "		; row 10 tunnel/open travel row
-	.ascii "######.## ######## ##.######"		; row 11 
-	.ascii "   #.##     ##.#   "		; row 12
-	.ascii "######.## ######## ##.######"		; row 13
-	.ascii "#............##............#"		; row 14
-	.ascii "#.####.#####.##.#####.####.#"		; row 15
-	.ascii "#...##................##...#"		; row 16
-	.ascii "###.##.##.########.##.##.###"		; row 17
-	.ascii "#......##....##....##......#"		; row 18
-	.ascii "#.##########.##.##########.#"		; row 19
-	.ascii "############################"		; row 20 all wall
+timer_interval:		.word 0x003D0900	; Interval between ticks
+power_pellet_time:	.byte 0				; Time left until power pellet wears off in seconds
+tick_count:			.byte 0				; How many ticks passed in current second
+ghosts_eaten:		.byte 0
 
-board_current:		.space 560				;board copy, 20 rows * 28 cols = 560 bytes
 
+; Initial board setup
+board_initial:
+	.ascii "############################"
+	.ascii "############################"
+	.ascii "############################"
+	.ascii "#............##............#"
+	.ascii "#.####.#####.##.#####.####.#"
+	.ascii "#O####.#####.##.#####.####O#"
+	.ascii "#.####.#####.##.#####.####.#"
+	.ascii "#..........................#"
+	.ascii "#.####.##.########.##.####.#"
+	.ascii "#.####.##.########.##.####.#"
+	.ascii "#......##....##....##......#"
+	.ascii "######.##### ## #####.######"
+	.ascii "######.##          ##.######"
+	.ascii "######.## ###--### ##.######"
+	.ascii "######.## #      # ##.######"
+	.ascii "######.## #      # ##.######"
+	.ascii "      .   #      #   .      "
+	.ascii "######.## #      # ##.######"
+	.ascii "######.## #      # ##.######"
+	.ascii "######.## ######## ##.######"
+	.ascii "######.##          ##.######"
+	.ascii "######.## ######## ##.######"
+	.ascii "#............##............#"
+	.ascii "#.####.#####.##.#####.####.#"
+	.ascii "#.####.#####.##.#####.####.#"
+	.ascii "#O..##................##..O#"
+	.ascii "###.##.##.########.##.##.###"
+	.ascii "###.##.##.########.##.##.###"
+	.ascii "#......##....##....##......#"
+	.ascii "#.##########.##.##########.#"
+	.ascii "#.##########.##.##########.#"
+	.ascii "#..........................#"
+	.ascii "############################"
+
+; Real-time board state
+board_current:
+	.space 924
 
 	.text
 	.global lab7
@@ -118,6 +158,7 @@ board_current:		.space 560				;board copy, 20 rows * 28 cols = 560 bytes
 	.global int2str
 	.global output_character
 	.global simple_read_character
+	.global read_character
 
 	.global Timer_Handler
 	.global UART0_Handler
@@ -151,17 +192,34 @@ ptr_to_clyde_spawn:			.word clyde_spawn
 ptr_to_inky_spawn:			.word inky_spawn
 ptr_to_pinky_spawn:			.word pinky_spawn
 
+;pointers for reset/restart
+ptr_to_pacman_start:		.word pacman_start
+ptr_to_blinky_start:		.word blinky_start
+ptr_to_clyde_start:			.word clyde_start
+ptr_to_inky_start:			.word inky_start
+ptr_to_pinky_start:			.word pinky_start
+
 ptr_to_lives:				.word lives
 ptr_to_is_game_over:		.word is_game_over
-ptr_to_power_pellet_time:	.word power_pellet_time
+ptr_to_game_paused:			.word game_paused
 
-ptr_to_board_template:		.word board_template		; immutable template board
-ptr_to_board_current:		.word board_current			; mutable live board
-ptr_to_pacman_start:		.word pacman_start			; Pac-Man start position
-ptr_to_blinky_start:		.word blinky_start			; Blinky start position
-ptr_to_clyde_start:			.word clyde_start			; Clyde start position
-ptr_to_inky_start:			.word inky_start			; Inky start position
-ptr_to_pinky_start:			.word pinky_start			; Pinky start position
+ptr_to_score:				.word score
+ptr_to_score_string:		.word score_string
+ptr_to_score_buffer:		.word score_buffer
+
+ptr_to_board_initial:		.word board_initial
+ptr_to_board_current:		.word board_current
+
+ptr_to_path_string:			.word path_string
+ptr_to_wall_string:			.word wall_string
+ptr_to_gate_string:			.word gate_string
+ptr_to_white_string:		.word white_string
+ptr_to_black_bg:			.word black_bg
+
+ptr_to_timer_interval:		.word timer_interval
+ptr_to_power_pellet_time:	.word power_pellet_time
+ptr_to_tick_count:			.word tick_count
+ptr_to_ghosts_eaten:		.word ghosts_eaten
 
 
 ; Offset used for indexing in lookup table
@@ -169,11 +227,15 @@ BOLD:		.equ 0x10
 YELLOW:		.equ 0x11
 RED:		.equ 0x12
 ORANGE:		.equ 0x13
-cyan:		.equ 0x14
+CYAN:		.equ 0x14
 PINK:		.equ 0x15
+PATH:		.equ 0x17
+GATE:		.equ 0x18
+WALL:		.equ 0x19
 
-BOARD_ROWS:	.equ 20							; number of board rows
-BOARD_COLS:	.equ 28							; number of board columns
+BOARD_HEIGHT:	.equ 33
+BOARD_WIDTH:	.equ 28
+BOARD_SIZE:		.equ 924
 
 
 lab7:
@@ -186,14 +248,182 @@ lab7:
 		bl uart_interrupt_init
 		bl timer_interrupt_init
 
-		bl init_board						; copy the template maze into the live mutable board
-		bl draw_board						; draw the whole board before drawing characters on top
-		bl draw_entities					; draw Pac-Man and all ghosts at their current positions
+		; Initialize and draw board
+		bl init_board
+		bl draw_board
+
+		bl resume_game		; Game needs to be paused when drawing board, so resume after drawing
+
+		; Load pacman position
+		ldr r2, ptr_to_pacman_pos	; Initialize pointer to pacman opsition
+		ldrb r0, [r2], #1			; r0 = pacman line
+		ldrb r1, [r2]				; r1 = pacman column
+
+		bl move_cursor
+
+		; Print pacman
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_pacman_string
+		bl output_string
 
 lab7_main_loop:
+		; if game over, enter restart/quit loop
+		ldr r0, ptr_to_is_game_over
+		ldrb r0, [r0]
+		cmp r0, #0
+		beq lab7_main_loop
 
+		bl game_over_menu
 		b lab7_main_loop
 
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Initializes real time board with board_init data
+init_board:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_board_initial	; Initialize pointers
+		ldr r1, ptr_to_board_current
+		mov r3, #BOARD_SIZE			; copy fixed board size so embedded row terminators don't break copying
+init_board_loop:
+		ldrb r2, [r0], #1		; Load a char and increment pointer
+		strb r2, [r1], #1		; Store to real time board
+		subs r3, r3, #1			; decrement byte counter
+		bne init_board_loop		; keep copying until full board copied
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Draw entire board
+draw_board:
+		PUSH {r4-r12, lr}
+
+		ldr r4, ptr_to_board_current
+		mov r5, #1		; line pos
+		mov r6, #1		; column pos
+draw_board_line_loop:
+		mov r0, r5		; Move cursor
+		mov r1, #1
+		bl move_cursor
+		mov r6, #1
+draw_board_col_loop:
+		ldrb r7, [r4], #1
+		cmp r7, #0x23		; '#'
+		beq draw_board_wall
+		cmp r7, #0x2D		; '-'
+		beq draw_board_gate
+draw_board_path:			; color background and output char
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_white_string
+		bl output_string
+		mov r0, r7
+		bl output_character
+		b draw_board_cursor_update
+draw_board_wall:			; output wall
+		ldr r0, ptr_to_wall_string
+		bl output_string
+		b draw_board_cursor_update
+draw_board_gate:			; output ghost spawn gate
+		ldr r0, ptr_to_gate_string
+		bl output_string
+draw_board_cursor_update:	; Increment col, line counter
+		add r6, r6, #1
+		cmp r6, #29
+		blt draw_board_col_loop
+		add r5, r5, #1		; If col over bound, increment line
+		cmp r5, #34			; Make sure everything within bound
+		bge draw_board_exit
+		b draw_board_line_loop
+draw_board_exit:
+		mov r0, #2			; Pos for score on board
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_black_bg
+		bl output_string
+		ldr r0, ptr_to_white_string
+		bl output_string
+		ldr r0, ptr_to_score_string
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Draw tile at position with current board data
+; r0 = line pos
+; r1 = column pos
+draw_tile:
+		PUSH {r4-r12, lr}
+
+		mov r5, r0			; preserve pos to use for move_cursor
+		mov r6, r1
+
+		sub r0, r0, #1		; Subtract 1 because ansi coords start at 1
+		sub r1, r1, #1
+		mov r2, #BOARD_WIDTH
+		mul r4, r0, r2		; Calculate position in board_current
+		add r4, r4, r1
+
+		ldr r0, ptr_to_board_current
+		ldrb r4, [r0, r4]	; r4 = board_current tile char
+
+		cmp r4, #0x23		; if '#', output wall
+		beq draw_tile_wall
+		cmp r4, #0x2D		; if '-', output gate
+		beq draw_tile_gate
+draw_tile_path:				; else, draw path
+		mov r0, r5					; move cursor to pos
+		mov r1, r6
+		bl move_cursor
+		ldr r0, ptr_to_path_string	; output blue background
+		bl output_string
+		ldr r0, ptr_to_white_string	; prepare pellet output
+		bl output_string
+		mov r0, r4
+		bl output_character	; output pellet
+		b draw_tile_exit
+draw_tile_wall:
+		mov r0, r5					; move cursor to pos
+		mov r1, r6
+		bl move_cursor
+		ldr r0, ptr_to_wall_string	; output black background
+		bl output_string
+		b draw_tile_exit
+draw_tile_gate:
+		mov r0, r5					; move cursor to pos
+		mov r1, r6
+		bl move_cursor
+		ldr r0, ptr_to_gate_string	; output cyan background
+		bl output_string
+draw_tile_exit:
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+pause_game:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_game_paused
+		mov r1, #1
+		strb r1, [r0]
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+resume_game:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_game_paused
+		mov r1, #0
+		strb r1, [r0]
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -202,11 +432,20 @@ lab7_main_loop:
 Timer_Handler:
 		PUSH {r4-r12, lr}
 
-		mov r0, #0x0024		; Clear the interrupt pin
+		mov  r0, #0x0024		; Clear the interrupt pin
 		movt r0, #0x4003
 		ldr r1, [r0]
 		orr r1, r1, #1
 		str r1, [r0]
+
+		ldr r0, ptr_to_game_paused		; If paused, skip tick
+		ldrb r0, [r0]
+		cmp r0, #1
+		beq timer_handler_exit
+
+		bl update_power_pellet
+
+		bl erase_entities	; Erase everyone first to prevent graphical error
 
 		bl move_ghosts		; Update ghosts' position and redraw
 		bl check_ghost_coll
@@ -224,19 +463,21 @@ Timer_Handler:
 		bl output_character
 		;;;;;;;;;;
 
+timer_handler_exit:
+
 		POP {r4-r12, lr}
 		BX lr
 
 
 UART0_Handler:
-    PUSH  {r4-r12, lr}
+        PUSH    {r4-r12, lr}
 
-    ; clear UART receive interrupt by writing bit 4 to UARTICR
-    MOV   r0, #0xC044
-    MOVT  r0, #0x4000
-    MOV   r1, #1
-    LSL   r1, r1, #4
-    STR   r1, [r0]
+        ; clear UART receive interrupt by writing bit 4 to UARTICR
+        MOV     r0, #0xC044                          ; UARTICR address
+        MOVT    r0, #0x4000
+        MOV     r1, #1                               ; start with 1
+        LSL     r1, r1, #4                           ; shift to bit 4 => interrupt clear bit
+        STR     r1, [r0]
 
 		bl simple_read_character	; Stores pressed char in r0
 		cmp r0, #0x77		; 'w'
@@ -275,14 +516,36 @@ store_new_dir:
 
 not_wasd:
 
-    POP   {r4-r12, lr}
-    BX   lr
+        POP     {r4-r12, lr}
+        BX      lr
 
 
 Switch_Handler:
-    PUSH  {r4-r12, lr}
-    POP   {r4-r12, lr}
-    BX   lr
+        PUSH    {r4-r12, lr}
+
+		; clear PF4 interrupt so button can trigger again
+		mov  r0, #0x541C
+		movt r0, #0x4002
+		mov  r1, #1
+		lsl  r1, r1, #4
+		str  r1, [r0]
+
+		; toggle pause state
+		ldr r0, ptr_to_game_paused
+		ldrb r1, [r0]
+		cmp r1, #0
+		beq switch_pause
+
+switch_resume:
+		bl resume_game
+		b switch_done
+
+switch_pause:
+		bl pause_game
+
+switch_done:
+        POP     {r4-r12, lr}
+        BX      lr
 
 
 ; Moves cursor to position (line, column) where line=r0, column=r1.
@@ -328,7 +591,7 @@ find_null_loop:
 		ldrb r1, [r0], #1		; Load character and increment r0
 		cmp r1, #0				; If character != 0, keep looping
 		bne find_null_loop
-		sub r0, r0, #1
+		sub r0, r0, #1			; fixed syntax for stepping cursor back one byte
 
 		POP {lr}
 		MOV pc, lr
@@ -337,54 +600,232 @@ find_null_loop:
 move_pacman:
 		PUSH {r4-r12, lr}
 
-		ldr r2, ptr_to_pacman_pos				; load pointer to Pac-Man's current position bytes
-		ldrb r6, [r2]							; r6 = current Pac-Man row
-		ldrb r7, [r2, #1]						; r7 = current Pac-Man column
+		; Load pacman position
+		ldr r2, ptr_to_pacman_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = column pos
 
-		ldr r3, ptr_to_pacman_dir				; load pointer to Pac-Man's current direction bytes
-		ldrsb r4, [r3]							; r4 = signed row direction 
-		ldrsb r5, [r3, #1]						; r5 = signed column direction 
+		mov r6, r0		; Preserve r0, r1 before move_cursor
+		mov r7, r1
 
-		add r0, r6, r4							; comp next row into r0
-		add r1, r7, r5							; comp next column into r1
+		; Load pacman direction
+		ldr r3, ptr_to_pacman_dir
+		ldrsb r4, [r3]			; r4 = line dir
+		ldrsb r5, [r3, #1]		; r5 = column dir
 
-		bl check_pacman_wrap					; apply tunnel wrap-around if person hits left/right tunnel
+		; Update pacman position based on direction
+		add r0, r6, r4
+		add r1, r7, r5
 
-		mov r8, r0								; save wrapped row in r8
-		mov r9, r1								; save wrapped column in r9
+		bl check_pacman_wrap	; Applies wrap and returns pos to r0, r1
 
-		mov r0, r8								; place row in r0 for wall-check
-		mov r1, r9								; place column in r1 for wall-check
-		bl check_wall							; check whether persons destination is a wall
-		cmp r0, #1								; compare returned result against 1, 1 meaning "is wall"
-		beq pacman_keep_old_pos					; if destination is a wall, keep old position
+		; keep move in temp registers
+		mov r8, r0
+		mov r9, r1
 
-		mov r10, r8								; if no wall, final row becomes row
-		mov r11, r9								; if no wall, final column becomes column
-		b pacman_have_final_pos					; skip the "keep old position" case
+		; test the tile before storing
+		mov r0, r8
+		mov r1, r9
+		bl check_wall
+		cmp r0, #1
+		beq pacman_blocked
 
-pacman_keep_old_pos:
-		mov r10, r6								; final row stays as old row because movement hit a wall
-		mov r11, r7								; final column stays as old column because movement hit a wall
+		mov r0, r8
+		mov r1, r9
+		b pacman_store
 
-pacman_have_final_pos:
-		mov r0, r6								; old row passed to draw_tile_at so old tile gets restored
-		mov r1, r7								; old column passed to draw_tile_at so old tile gets restored
-		bl draw_tile_at							; redraw underlying board tile where Pac-Man used to be
+pacman_blocked:
+		; if blocked, stay at previous location
+		mov r0, r6
+		mov r1, r7
 
-		ldr r2, ptr_to_pacman_pos				; reload pointer to live Pac-Man position
-		strb r10, [r2]							; store final row back into pacman_pos
-		strb r11, [r2, #1]						; store final column back into pacman_pos
+pacman_store:
+		; Store final pacman position
+		ldr r2, ptr_to_pacman_pos
+		strb r0, [r2]
+		strb r1, [r2, #1]
 
-		mov r0, r10								; put final row into r0 for pellet-eating check
-		mov r1, r11								; put final column into r1 for pellet-eating check
-		bl eat_pellet_if_present				; if Pac-Man landed on '.', remove it from board_current
+		; Print pacman
+		bl move_cursor
+		ldr r0, ptr_to_path_string		; output path background because pacman will always be on path
+		bl output_string
+		ldr r0, ptr_to_pacman_string
+		bl output_string
 
-		mov r0, r10								; put final row into r0 for cursor move to Pac-Man's new position
-		mov r1, r11								; put final column into r1 for cursor move to Pac-Man's new position
-		bl move_cursor							; move terminal cursor to Pac-Man's new position
-		ldr r0, ptr_to_pacman_string			; load address of Pac-Man display string
-		bl output_string						; draw Pac-Man at new/final position
+		bl check_pellet
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Checks if pacman's position is on a pellet then updates game state
+check_pellet:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_pacman_pos	; Load pacman position
+		ldrb r1, [r0]				; r5 = line
+		ldrb r2, [r0, #1]			; r6 = column
+
+		; Find corresponding location in board_current
+		sub r1, r1, #1		; Subtract 1 becuase putty position starts with 1
+		sub r2, r2, #1
+		mov r0, #BOARD_WIDTH
+		mul r1, r1, r0		; Calculate pacman position within board_current
+		add r1, r1, r2		; r1 = offset from board_current pointer
+
+		ldr r0, ptr_to_board_current
+		ldrb r2, [r0, r1]	; Load board char at pacman pos
+		cmp r2, #0x2E		; is char = '.'?
+		beq eat_normal_pellet
+		cmp r2, #0x4F		; is char = 'O'?
+		beq eat_power_pellet
+		b check_pellet_exit	; if neither, exit
+
+eat_normal_pellet:
+		mov r2, #0x20				; 0x20 = ' '
+		strb r2, [r0, r1]			; Store space to pellet pos
+		ldr r0, ptr_to_score		; Load score
+		ldr r1, [r0]
+		add r0, r1, #10				; Update score
+		bl update_score
+		b check_pellet_exit
+eat_power_pellet:
+		mov r2, #0x20				; 0x20 = ' '
+		strb r2, [r0, r1]			; Store space to pellet pos
+		ldr r0, ptr_to_score		; Load score
+		ldr r1, [r0]
+		add r0, r1, #50				; Update score
+		bl update_score
+
+		ldr r0, ptr_to_power_pellet_time	; Set remaining power pellet time to 15
+		mov r1, #15
+		strb r1, [r0]
+
+		ldr r0, ptr_to_tick_count			; Initialize tick counter to 0
+		mov r1, #0
+		strb r1, [r0]
+
+		ldr r0, ptr_to_ghosts_eaten			; Initialize ghosts eaten count to 0
+		strb r1, [r0]
+check_pellet_exit:
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Updates score string in memory to given score
+; r0 = new score
+update_score:
+		PUSH {r4-r12, lr}
+		mov  r1, #0x423F			; 0xF423F = 999999
+		movt r1, #0x000F
+		cmp r0, r1					; If score greater than 999999, set score to 999999(max score)
+		it ge
+		movge r0, r1
+
+		ldr r1, ptr_to_score		; Update int score first
+		str r0, [r1]
+
+		mov r1, r0					; move to r1 for int2str
+		ldr r0, ptr_to_score_buffer	; Score buffer pointer
+		bl int2str					; Store score in buffer as string
+
+		ldr r0, ptr_to_score_buffer
+		bl find_null				; Find end address of buffer
+		ldr r1, ptr_to_score_buffer
+		sub r2, r0, r1				; Calculate number of digits
+
+		ldr r0, ptr_to_score_string
+		mov r1, #0x30				; 0x30 = '0'
+		strb r1, [r0]				; Fill score_string with '0's
+		strb r1, [r0, #1]
+		strb r1, [r0, #2]
+		strb r1, [r0, #3]
+		strb r1, [r0, #4]
+		strb r1, [r0, #5]
+
+		mov r1, #6					; Score string length is 6
+		sub r1, r1, r2				; Calculate starting pos
+		add r0, r0, r1				; Move pointer to starting pos
+
+		ldr r1, ptr_to_score_buffer
+update_score_loop:			; Copy buffer to score_string
+		ldrb r2, [r1], #1
+		cmp r2, #0					; If null char, exit loop
+		beq update_score_done
+		strb r2, [r0], #1
+		b update_score_loop
+update_score_done:
+		mov r0, #2					; pos for score on board
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_black_bg		; make background black
+		bl output_string
+		ldr r0, ptr_to_white_string	; make foreground white
+		bl output_string
+		ldr r0, ptr_to_score_string	; print score
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+update_power_pellet:
+		PUSH {r4-r12, lr}
+
+		; Power pellet time update
+		ldr r0, ptr_to_power_pellet_time	; Load remaining power pellet time
+		ldrb r1, [r0]
+		cmp r1, #0							; If time=0, skip power pellet calculation
+		beq update_power_pellet_exit
+
+		ldr r2, ptr_to_tick_count		; Load tick count
+		ldrb r3, [r2]
+		add r3, r3, #1					; Increment tick count
+		strb r3, [r2]
+
+		cmp r3, #4			; If not at 4 ticks yet, exit
+		blt update_power_pellet_exit
+
+		mov r3, #0			; Reset tick count to 0
+		strb r3, [r2]
+		sub r1, r1, #1		; Decrement remaining time
+		strb r1, [r0]
+
+update_power_pellet_exit:
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Need to erase pacman and ghosts before moving to prevent overwriting ghost or pacman
+erase_entities:
+		PUSH {r4-r12, lr}
+
+		ldr r2, ptr_to_pacman_pos	; Erase pacman
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl draw_tile
+
+		; Erase ghosts
+		ldr r2, ptr_to_blinky_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = col pos
+		bl draw_tile			; erase ghost at pos
+
+		ldr r2, ptr_to_clyde_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = col pos
+		bl draw_tile			; erase ghost at pos
+
+		ldr r2, ptr_to_inky_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = col pos
+		bl draw_tile			; erase ghost at pos
+
+		ldr r2, ptr_to_pinky_pos
+		ldrb r0, [r2]			; r0 = line pos
+		ldrb r1, [r2, #1]		; r1 = col pos
+		bl draw_tile			; erase ghost at pos
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -410,10 +851,10 @@ check_ghost_coll:
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = blinky position
-		ldr r0, ptr_to_blinky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_blinky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_blinky_spawn
 		ldr r2, ptr_to_blinky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 blinky_nocoll:				; No collision with blinky
 		ldr r0, ptr_to_clyde_pos
@@ -427,10 +868,10 @@ blinky_nocoll:				; No collision with blinky
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = clyde position
-		ldr r0, ptr_to_clyde_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_clyde_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_clyde_spawn
 		ldr r2, ptr_to_clyde_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 clyde_nocoll:				; No collision with clyde
 		ldr r0, ptr_to_inky_pos
@@ -444,10 +885,10 @@ clyde_nocoll:				; No collision with clyde
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = inky position
-		ldr r0, ptr_to_inky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_inky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_inky_spawn
 		ldr r2, ptr_to_inky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 inky_nocoll:				; No collision with inky
 		ldr r0, ptr_to_pinky_pos
@@ -461,10 +902,10 @@ inky_nocoll:				; No collision with inky
 		ldrb r6, [r6]
 		cmp r6, #0			; If power pellet is not active, pacman dead. Otherwise ghost eaten
 		beq normal_ghost_coll	; Pacman position = pinky position
-		ldr r0, ptr_to_pinky_pos		; Pass pos, spawn, dir to ghost_eaten
+		ldr r0, ptr_to_pinky_pos		; Pass pos, spawn, dir to eat_ghost
 		ldr r1, ptr_to_pinky_spawn
 		ldr r2, ptr_to_pinky_dir
-		bl ghost_eaten
+		bl eat_ghost
 		b exit_check_ghost_coll
 pinky_nocoll:				; No collision with pinky
 		b exit_check_ghost_coll
@@ -481,13 +922,8 @@ exit_check_ghost_coll:
 ; r0 = ptr to ghost pos
 ; r1 = ptr to ghost spawn
 ; r2 = ptr to ghost dir
-ghost_eaten:
+eat_ghost:
 		PUSH {r4-r12, lr}
-
-		ldrb r4, [r0]							; read the ghost's current row before teleporting it
-		ldrb r5, [r0, #1]						; read the ghost's current column before teleporting it
-		mov r10, r4								; save old ghost row so we can redraw that tile later
-		mov r11, r5								; save old ghost column so we can redraw that tile later
 
 		; Teleport ghost to its spawn
 		ldrb r4, [r1]		; r4 = spawn line
@@ -501,9 +937,19 @@ ghost_eaten:
 		strb r4, [r2]
 		strb r5, [r2, #1]
 
-		mov r0, r10								; pass old ghost row to redraw helper
-		mov r1, r11								; pass old ghost column to redraw helper
-		bl draw_tile_at							; put back pellet or space that was underneath the ghost
+		; Update score
+		ldr r0, ptr_to_ghosts_eaten
+		ldrb r1, [r0]		; r1 = number of ghosts eaten
+
+		mov r2, #100		; Calculate ghost point
+		lsl r2, r2, r1
+		add r1, r1, #1		; Increment ghost eaten count
+		strb r1, [r0]
+
+		ldr r1, ptr_to_score	; Load score
+		ldr r0, [r1]
+		add r0, r0, r2			; Update and store new score
+		bl update_score
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -537,75 +983,79 @@ exit_pacman_dead:
 reset_board:
 		PUSH {r4-r12, lr}
 
-		bl init_board							; rebuild the board from the original temp
+		; restore all characetr positions to their starting spot
+		ldr r0, ptr_to_pacman_start
+		ldr r1, ptr_to_pacman_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
 
-		ldr r0, ptr_to_pacman_start				; r0 = Pac-Man's start position
-		ldr r1, ptr_to_pacman_pos				; r1 = live Pac-Man position
-		ldrb r2, [r0]							; r2 = start row for Pac-Man
-		ldrb r3, [r0, #1]						; r3 = start column for Pac-Man
-		strb r2, [r1]							; reset Pac-Man row to start row
-		strb r3, [r1, #1]						; reset Pac-Man column to start column
+		ldr r0, ptr_to_blinky_start
+		ldr r1, ptr_to_blinky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
 
-		ldr r0, ptr_to_blinky_start				; r0 = Blinky start position
-		ldr r1, ptr_to_blinky_pos				; r1 = live Blinky position
-		ldrb r2, [r0]							; r2 = Blinky start row
-		ldrb r3, [r0, #1]						; r3 = Blinky start column
-		strb r2, [r1]							; reset Blinky row
-		strb r3, [r1, #1]						; reset Blinky column
+		ldr r0, ptr_to_clyde_start
+		ldr r1, ptr_to_clyde_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
 
-		ldr r0, ptr_to_clyde_start				; r0 = Clyde start position
-		ldr r1, ptr_to_clyde_pos				; r1 = live Clyde position
-		ldrb r2, [r0]							; r2 = Clyde start row
-		ldrb r3, [r0, #1]						; r3 = Clyde start column
-		strb r2, [r1]							; reset Clyde row
-		strb r3, [r1, #1]						; reset Clyde column
+		ldr r0, ptr_to_inky_start
+		ldr r1, ptr_to_inky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
 
-		ldr r0, ptr_to_inky_start				; r0 = Inky start position
-		ldr r1, ptr_to_inky_pos					; r1 = live Inky position
-		ldrb r2, [r0]							; r2 = Inky start row
-		ldrb r3, [r0, #1]						; r3 = Inky start column
-		strb r2, [r1]							; reset Inky row
-		strb r3, [r1, #1]						; reset Inky column
+		ldr r0, ptr_to_pinky_start
+		ldr r1, ptr_to_pinky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
 
-		ldr r0, ptr_to_pinky_start				; r0 = Pinky start position
-		ldr r1, ptr_to_pinky_pos				; r1 = live Pinky position
-		ldrb r2, [r0]							; r2 = Pinky start row
-		ldrb r3, [r0, #1]						; r3 = Pinky start column
-		strb r2, [r1]							; reset Pinky row
-		strb r3, [r1, #1]						; reset Pinky column
+		; reset movement directions
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
 
-		ldr r0, ptr_to_pacman_dir				; load Pac-Man direction 
-		mov r1, #0								; row delta = 0
-		mov r2, #1								; col delta = +1 so Pac-Man starts moving right
-		strb r1, [r0]							; Pac-Man row direction
-		strb r2, [r0, #1]						; Pac-Man column direction
+		ldr r0, ptr_to_blinky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
 
-		ldr r0, ptr_to_blinky_dir				; Blinky direction address
-		mov r1, #0								; row delta = 0
-		mov r2, #1								; col delta = +1
-		strb r1, [r0]							; reset Blinky row direction
-		strb r2, [r0, #1]						; reset Blinky column direction
+		ldr r0, ptr_to_clyde_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
 
-		ldr r0, ptr_to_clyde_dir				; Clyde direction address
-		mov r1, #0								; row delta = 0
-		mov r2, #-1								; col delta = -1
-		strb r1, [r0]							; reset Clyde row direction
-		strb r2, [r0, #1]						; reset Clyde column direction
+		ldr r0, ptr_to_inky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
 
-		ldr r0, ptr_to_inky_dir					; Inky direction address
-		mov r1, #0								; row delta = 0
-		mov r2, #1								; col delta = +1
-		strb r1, [r0]							; reset Inky row direction
-		strb r2, [r0, #1]						; reset Inky column direction
+		ldr r0, ptr_to_pinky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
 
-		ldr r0, ptr_to_pinky_dir				; Pinky direction address
-		mov r1, #0								; row delta = 0
-		mov r2, #-1								; col delta = -1
-		strb r1, [r0]							; reset Pinky row direction
-		strb r2, [r0, #1]						; reset Pinky column direction
+		ldr r0, ptr_to_game_paused
+		mov r1, #0
+		strb r1, [r0]
 
-		bl draw_board							; redraw the board after reset
-		bl draw_entities						; redraw Pac-Man and ghosts after reset
+		bl draw_board
+		bl draw_entities
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -616,22 +1066,17 @@ reset_board:
 check_pacman_wrap:
 		PUSH {lr}
 
-		cmp r0, #10								; only allow left/right wrap when Pac-Man is on the tunnel row
-		bne pacman_no_tunnel_wrap				; if not on tunnel row, skip wrap 
-
-		cmp r1, #28								; check whether Pac-Man moved past the right tunnel edge
-		ble pacman_no_rightwrap					; if not past right edge, test left edge 
-		mov r1, #1								; wrap from right edge to column 1
-		b exit_pacman_wrap						; wrap complete, skip rest of function
-
+		; If beyond right boundary, set column to 1
+		cmp r1, #28
+		ble pacman_no_rightwrap
+		mov r1, #1
+		b exit_pacman_wrap
+		; If not beyond right boundary, check left boundary
 pacman_no_rightwrap:
-		cmp r1, #1								; check whether Pac-Man moved past the left tunnel
-		bge exit_pacman_wrap					; if still on board, no wrap 
-		mov r1, #28								; wrap from just before left edge to column 28
-		b exit_pacman_wrap						; finish function after left-wrap
-
-pacman_no_tunnel_wrap:
-
+		cmp r1, #1
+		bge exit_pacman_wrap
+		mov r1, #28
+		b exit_pacman_wrap
 exit_pacman_wrap:
 
 		POP {lr}
@@ -671,233 +1116,381 @@ move_ghosts:
 move_oneghost:
 		PUSH {r4-r12, lr}
 
-		mov r4, r0								;save pointer to this ghost's live position 
-		mov r9, r1								;save pointer to this ghost's live direction 
-		mov r10, r2								;save pointer to the normal display 
-		
-		ldrb r5, [r4]							;r5 = current ghost row
-		ldrb r6, [r4, #1]						;r6 = current ghost column
+		mov r4, r0		; r4 = ghost pos address
+		mov r9, r1		; r6 = ghost dir address
 
-		mov r0, r5								;pass old row into tile redraw helper
-		mov r1, r6								;pass old column into tile redraw helper
-		bl draw_tile_at							;restore whatever was under the ghost before moving it
+		ldrb r0, [r4]		; r0 = line pos
+		ldrb r1, [r4, #1]	; r1 = column pos
 
-		ldrsb r7, [r9]							;r7 = signed row direction delta for ghost
-		ldrsb r8, [r9, #1]						;r8 = signed column direction delta for ghost
+		mov r5, r0		; Preserve r0, r1 before move_cursor
+		mov r6, r1
 
-		add r0, r5, r7							;comp next row
-		add r1, r6, r8							;comp next column
+		; choose new direction only at intersections
+		mov r0, r5
+		mov r1, r6
+		bl is_intersection
+		cmp r0, #1
+		bne ghost_use_current_dir
 
-		cmp r0, #10								;only do tunnel wrap if ghost is on tunnel row
-		bne ghost_no_tunnel_wrap				;if not on tunnel row, skip wrap logic
-		cmp r1, #28								;test right-side tunnel overflow
-		ble ghost_no_rightwrap					;if not beyond right edge, test left edge
-		mov r1, #1								;wrap right exit to column 1
-		b ghost_wrap_done						;skip remaining wrap checks
+		bl choose_ghost_turn
+
+ghost_use_current_dir:
+		; Load ghost direction
+		ldrsb r7, [r9]		; r7 = line dir
+		ldrsb r8, [r9, #1]	; r8 = column dir
+
+		; Update ghost position based on direction
+		add r0, r5, r7
+		add r1, r6, r8
+
+		; Wrap-around logic
+		; If beyond right boundary, set column to 1
+		cmp r1, #28
+		ble ghost_no_rightwrap
+		mov r1, #1
+		b exit_ghost_wrap
+		; If not beyond right boundary, check left boundary
 ghost_no_rightwrap:
-		cmp r1, #1								;test left-side tunnel overflow
-		bge ghost_wrap_done						;if still in range, no wrap needed
-		mov r1, #28								;wrap left exit to column 28
-		b ghost_wrap_done						;finish wrap handling
-ghost_no_tunnel_wrap:
-ghost_wrap_done:
+		cmp r1, #1
+		bge exit_ghost_wrap
+		mov r1, #28
+		b exit_ghost_wrap
+exit_ghost_wrap:
 
-		mov r11, r0								; save row after wrap into r11
-		mov r12, r1								; save column after wrap into r12
+		; block ghosts on walls only but not gates
+		mov r10, r0
+		mov r11, r1
+		bl check_ghost_wall
+		cmp r0, #1
+		beq ghost_blocked
 
-		mov r0, r11								; pass row into wall checker
-		mov r1, r12								; pass column into wall checker
-		bl check_wall							; check whether ghost destination is a wall
-		cmp r0, #1								; compare result against 1, 1 meaning "wall"
-		bne ghost_store_new_pos					; if destination is not a wall, keep this move
+		mov r0, r10
+		mov r1, r11
+		b ghost_store_final
 
-		ldrsb r7, [r9]							; reload current row direction
-		ldrsb r8, [r9, #1]						; reload current column direction
-		rsb r7, r7, #0							; reverse row direction 
-		rsb r8, r8, #0							; reverse column direction 
-		strb r7, [r9]							; store reversed row direction 
-		strb r8, [r9, #1]						; store reversed column direction 
+ghost_blocked:
+		; reverse direction if chosen move hits wall
+		ldrsb r7, [r9]
+		ldrsb r8, [r9, #1]
+		rsb r7, r7, #0
+		rsb r8, r8, #0
+		strb r7, [r9]
+		strb r8, [r9, #1]
 
-		add r11, r5, r7							; comp new row using reversed direction
-		add r12, r6, r8							; comp new column using reversed direction
+		add r0, r5, r7
+		add r1, r6, r8
 
-		mov r0, r11								; pass reversed row into wall checker
-		mov r1, r12								; pass reversed column into wall checker
-		bl check_wall							; check whether reversed destination is a wall
-		cmp r0, #1								; compare result against 1, 1 meaning "wall"
-		bne ghost_store_new_pos					; if reversed move is valid, do it
+ghost_store_final:
+		; Store final ghost position
+		strb r0, [r4]
+		strb r1, [r4, #1]
 
-		mov r11, r5								; if both directions hit walls, stay on current row
-		mov r12, r6								; if both directions hit walls, stay on current column
-
-ghost_store_new_pos:
-		strb r11, [r4]							; store final ghost row 
-		strb r12, [r4, #1]						; store final ghost column 
-		
-		mov r0, r11								; move cursor to final ghost row
-		mov r1, r12								; move cursor to final ghost column
-		bl move_cursor							; place cursor at final ghost position
-		ldr r4, ptr_to_power_pellet_time		; load address of power pellet timer
-		ldrb r4, [r4]							; read remaining power pellet timer
-		cmp r4, #0								; check whether power pellet mode is active
-		beq print_normal_ghost					; if not active, draw normal ghost string
-		ldr r10, ptr_to_scared_string			; if active, replace normal ghost string with frightened one
+		; Print ghost
+		bl move_cursor
+		ldr r0, ptr_to_path_string			; Output path background because ghosts will be on path
+		bl output_string
+		ldr r4, ptr_to_power_pellet_time	; Load and check if power pellet is active
+		ldrb r4, [r4]
+		cmp r4, #0
+		beq print_normal_ghost
+		ldr r2, ptr_to_scared_string		; If power pellet active, print scared ghost
 print_normal_ghost:
-		mov r0, r10								; r0 = string pointer to output for this ghost
-		bl output_string						; draw ghost at its final location
+		mov r0, r2
+		bl output_string
 
 		POP {r4-r12, lr}
 		MOV pc, lr
 
 
+; check if intersection
+is_intersection:
+		PUSH {r4-r12, lr}
+
+		mov r5, r0
+		mov r6, r1
+		mov r7, #0
+
+		;  up
+		sub r0, r5, #1
+		mov r1, r6
+		bl check_ghost_wall
+		cmp r0, #0
+		addeq r7, r7, #1
+
+		; down
+		add r0, r5, #1
+		mov r1, r6
+		bl check_ghost_wall
+		cmp r0, #0
+		addeq r7, r7, #1
+
+		; left
+		mov r0, r5
+		sub r1, r6, #1
+		bl check_ghost_wall
+		cmp r0, #0
+		addeq r7, r7, #1
+
+		; right
+		mov r0, r5
+		add r1, r6, #1
+		bl check_ghost_wall
+		cmp r0, #0
+		addeq r7, r7, #1
+
+		cmp r7, #3			;at least 3 open directions so hallways don't trigger a turn
+		movge r0, #1
+		movlt r0, #0
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; ghost turn chooser thing that wont immediatly reverse
+choose_ghost_turn:
+		PUSH {r4-r12, lr}
+
+		ldrsb r10, [r9]		; current line dir
+		ldrsb r11, [r9, #1]	; current col dir
+
+		ldr r0, ptr_to_tick_count
+		ldrb r0, [r0]
+		add r0, r0, r5
+		add r0, r0, r6
+		and r0, r0, #3
+
+		cmp r0, #0
+		beq turn_try_up
+		cmp r0, #1
+		beq turn_try_down
+		cmp r0, #2
+		beq turn_try_left
+		b turn_try_right
+
+turn_try_up:
+		cmp r10, #1			; don't reverse from moving down and u hit a wall jsut stay
+		beq turn_try_down
+		sub r0, r5, #1
+		mov r1, r6
+		bl check_ghost_wall
+		cmp r0, #1
+		beq turn_try_down
+		mov r0, #-1
+		mov r1, #0
+		b turn_store
+
+turn_try_down:
+		cmp r10, #-1		;  don't reverse from moving up and u hit a wall jsut stay
+		beq turn_try_left
+		add r0, r5, #1
+		mov r1, r6
+		bl check_ghost_wall
+		cmp r0, #1
+		beq turn_try_left
+		mov r0, #1
+		mov r1, #0
+		b turn_store
+
+turn_try_left:
+		cmp r11, #1			; don't reverse from moving right and u hit a wall jsut stay
+		beq turn_try_right
+		mov r0, r5
+		sub r1, r6, #1
+		bl check_ghost_wall
+		cmp r0, #1
+		beq turn_try_right
+		mov r0, #0
+		mov r1, #-1
+		b turn_store
+
+turn_try_right:
+		cmp r11, #-1		;  don't reverse from moving right and u hit a wall jsut stay
+		beq turn_done
+		mov r0, r5
+		add r1, r6, #1
+		bl check_ghost_wall
+		cmp r0, #1
+		beq turn_done
+		mov r0, #0
+		mov r1, #1
+		b turn_store
+
+turn_store:
+		strb r0, [r9]
+		strb r1, [r9, #1]
+
+turn_done:
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Pac-Man gets blocked on walls and gate, ghosts get blocked on the walls only
 check_wall:
 		PUSH {r4-r12, lr}
 
-		bl get_board_addr						; convert row/column in r0/r1 
-		ldrb r1, [r0]							; load tile character 
-		cmp r1, #'#'							; compare tile against wall character '#'
-		moveq r0, #1							; if tile is '#', return 1 meaning "this is a wall"
-		movne r0, #0							; if tile is not '#', return 0 meaning "not a wall"
+		sub r2, r0, #1
+		sub r3, r1, #1
+		mov r4, #BOARD_WIDTH
+		mul r2, r2, r4
+		add r2, r2, r3
+
+		ldr r4, ptr_to_board_current
+		ldrb r5, [r4, r2]
+
+		cmp r5, #0x23		; '#'
+		beq check_wall_yes
+		cmp r5, #0x2D		; '-'
+		beq check_wall_yes
+
+		mov r0, #0
+		b check_wall_done
+
+check_wall_yes:
+		mov r0, #1
+
+check_wall_done:
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+check_ghost_wall:
+		PUSH {r4-r12, lr}
+
+		sub r2, r0, #1
+		sub r3, r1, #1
+		mov r4, #BOARD_WIDTH
+		mul r2, r2, r4
+		add r2, r2, r3
+
+		ldr r4, ptr_to_board_current
+		ldrb r5, [r4, r2]
+
+		cmp r5, #0x23		; '#'
+		moveq r0, #1
+		movne r0, #0
 
 		POP {r4-r12, lr}
 		MOV pc, lr
 
 
-init_board:
-		PUSH {r4-r12, lr}						
-
-		ldr r0, ptr_to_board_template			; r0 = source pointer 
-		ldr r1, ptr_to_board_current			; r1 = destination pointer 
-		mov r2, #560							; r2 = number of bytes 
-
-init_board_loop:
-		ldrb r3, [r0], #1						; load one byte from template and post-increment 
-		strb r3, [r1], #1						; store that byte into live board and post-increment 
-		subs r2, r2, #1							; update condition flags
-		bne init_board_loop						; loop until all 560 bytes are copied
-
-		POP {r4-r12, lr}						
-		MOV pc, lr								
-
-
-draw_board:
-		PUSH {r4-r12, lr}						
-
-		mov r4, #1								; r4 = current row number, starting at row 1
-		ldr r5, ptr_to_board_current			; r5 = pointer walking through live board bytes
-
-draw_board_row_loop:
-		mov r6, #1								; r6 = current column number, starting at col 1 for each new row
-
-draw_board_col_loop:
-		mov r0, r4								; put current row into r0 for move_cursor
-		mov r1, r6								; put current col into r1 for move_cursor
-		bl move_cursor							; move terminal cursor to this board cell
-
-		ldrb r0, [r5], #1						; load board character at current cell and advance board pointer
-		bl output_character						; print that board character on screen
-
-		add r6, r6, #1							; advance column counter to next column
-		cmp r6, #29								; compare against 29 because valid visible columns are 1..28
-		blt draw_board_col_loop					; if still within row, continue drawing next column
-
-		add r4, r4, #1							; advance row counter to next row
-		cmp r4, #21								; compare against 21 because valid visible rows are 1..20
-		blt draw_board_row_loop					; if still within board, continue drawing next row
-
-		POP {r4-r12, lr}						
-		MOV pc, lr								
-
-
+; redraw everything after the restart
 draw_entities:
-		PUSH {r4-r12, lr}						
-		ldr r2, ptr_to_pacman_pos				; load Pac-Man live position
-		ldrb r0, [r2]							; r0 = Pac-Man row
-		ldrb r1, [r2, #1]						; r1 = Pac-Man column
-		bl move_cursor							; move cursor to Pac-Man location
-		ldr r0, ptr_to_pacman_string			; load Pac-Man pointer
-		bl output_string						; draw Pac-Man
+		PUSH {r4-r12, lr}
 
-		ldr r2, ptr_to_blinky_pos				; load pointer to Blinky live position
-		ldrb r0, [r2]							; r0 = Blinky row
-		ldrb r1, [r2, #1]						; r1 = Blinky column
-		bl move_cursor							; move cursor to Blinky location
-		ldr r0, ptr_to_blinky_string			; load Blinky pointer
-		bl output_string						; draw Blinky
+		ldr r2, ptr_to_pacman_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_pacman_string
+		bl output_string
 
-		ldr r2, ptr_to_clyde_pos				; load pointer to Clyde live position
-		ldrb r0, [r2]							; r0 = Clyde row
-		ldrb r1, [r2, #1]						; r1 = Clyde column
-		bl move_cursor							; move cursor to Clyde location
-		ldr r0, ptr_to_clyde_string				; load Clyde pointer
-		bl output_string						; draw Clyde
+		ldr r2, ptr_to_blinky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_blinky_string
+		bl output_string
 
-		ldr r2, ptr_to_inky_pos					; load pointer to Inky live position
-		ldrb r0, [r2]							; r0 = Inky row
-		ldrb r1, [r2, #1]						; r1 = Inky column
-		bl move_cursor							; move cursor to Inky location
-		ldr r0, ptr_to_inky_string				; load Inky pointer
-		bl output_string						; draw Inky
+		ldr r2, ptr_to_clyde_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_clyde_string
+		bl output_string
 
-		ldr r2, ptr_to_pinky_pos				; load pointer to Pinky live position
-		ldrb r0, [r2]							; r0 = Pinky row
-		ldrb r1, [r2, #1]						; r1 = Pinky column
-		bl move_cursor							; move cursor to Pinky location
-		ldr r0, ptr_to_pinky_string				; load Pinky pointer
-		bl output_string						; draw Pinky
+		ldr r2, ptr_to_inky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_inky_string
+		bl output_string
 
-		POP {r4-r12, lr}						
-		MOV pc, lr								
+		ldr r2, ptr_to_pinky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_pinky_string
+		bl output_string
 
-
-get_board_addr:
-		PUSH {r4-r12, lr}						
-
-		sub r2, r0, #1							; convert 1-based row in r0 to 0-based row index in r2
-		sub r3, r1, #1							; convert 1-based col in r1 to 0-based col index in r3
-
-		mov r4, #28								; r4 = number of columns per board row
-		mul r2, r2, r4							; r2 = row_index * 28, 
-		add r2, r2, r3							; r2 = row byte offset + column offset
-
-		ldr r0, ptr_to_board_current			; r0 = base address of live board
-		add r0, r0, r2							; r0 = final address of requested board cell
-
-		POP {r4-r12, lr}						
-		MOV pc, lr								
+		POP {r4-r12, lr}
+		MOV pc, lr
 
 
-draw_tile_at:
-		PUSH {r4-r12, lr}						
+;full_restart that resets flags, score, board, and all positions
+full_restart:
+		PUSH {r4-r12, lr}
 
-		mov r4, r0								; save input row because get_board_addr will overwrite r0
-		mov r5, r1								; save input column because get_board_addr will overwrite r1
+		ldr r0, ptr_to_lives
+		mov r1, #4
+		strb r1, [r0]
 
-		bl get_board_addr						; convert requested row/col into address 
-		ldrb r6, [r0]							; load tile character currently stored at that board location
+		ldr r0, ptr_to_is_game_over
+		mov r1, #0
+		strb r1, [r0]
 
-		mov r0, r4								; restore row into r0 for move_cursor
-		mov r1, r5								; restore column into r1 for move_cursor
-		bl move_cursor							; move terminal cursor to the requested tile location
+		ldr r0, ptr_to_game_paused
+		mov r1, #1
+		strb r1, [r0]
 
-		mov r0, r6								; move tile character into r0 for output_character
-		bl output_character						; print tile character
-		POP {r4-r12, lr}						
-		MOV pc, lr								
+		ldr r0, ptr_to_power_pellet_time
+		mov r1, #0
+		strb r1, [r0]
+
+		ldr r0, ptr_to_tick_count
+		mov r1, #0
+		strb r1, [r0]
+
+		ldr r0, ptr_to_ghosts_eaten
+		mov r1, #0
+		strb r1, [r0]
+
+		mov r0, #0
+		bl update_score
+
+		bl init_board
+		bl reset_board
+		bl resume_game
+
+		POP {r4-r12, lr}
+		MOV pc, lr
 
 
-eat_pellet_if_present:
-		PUSH {r4-r12, lr}						
+;restart/quit loop after da game over
+game_over_menu:
+		PUSH {r4-r12, lr}
 
-		bl get_board_addr						; convert Pac-Man's current row/col into address 
-		ldrb r1, [r0]							; load tile character at Pac-Man's current location
-		cmp r1, #'.'							; compare tile against normal pellet character '.'
-		bne eat_pellet_done						; if not a pellet, nothing to remove
-		mov r1, #' '							; replace pellet with blank/open space character
-		strb r1, [r0]							; store blank into live board 
+game_over_menu_wait:
+		bl read_character
+		cmp r0, #'p'
+		beq game_over_restart
+		cmp r0, #'P'
+		beq game_over_restart
+		cmp r0, #'q'
+		beq game_over_quit
+		cmp r0, #'Q'
+		beq game_over_quit
+		b game_over_menu_wait
 
-eat_pellet_done:
-		POP {r4-r12, lr}						
-		MOV pc, lr								
+game_over_restart:
+		bl full_restart
+		b game_over_menu_exit
+
+game_over_quit:
+game_over_quit_loop:
+		b game_over_quit_loop
+
+game_over_menu_exit:
+		POP {r4-r12, lr}
+		MOV pc, lr
 
 	.end
