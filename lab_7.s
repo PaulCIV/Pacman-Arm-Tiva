@@ -46,6 +46,9 @@ gate_string:	.string 0x10, 0x18, ' ', 0	; ghost spawn gate
 wall_string:	.string 0x10, 0x19, ' ', 0	; wall(black background)
 white_string:	.string 0x10, 0x1A, 0		; white foreground
 black_bg:		.string 0x10, 0x19, 0		; black background
+ready_string:	.string 0x10, 0x11, "READY!", 0
+paused_string:	.string 0x10, 0x11, "PAUSED", 0
+clear_string:	.string 0x10, 0x17, "      ", 0
 
 
 ; Lookup table that references ANSI escape sequences
@@ -65,6 +68,7 @@ lookup_table:
 
 pacman_pos:		.byte 26, 15	; Pacman position in line, column format
 pacman_dir:		.byte 0, 1		; Direction for pacman movement in line, column format to make cursor movement logic cleaner.
+pacman_spawn:	.byte 26, 15
 
 ; Positions and directions for ghosts
 blinky_pos:			.byte 15, 12
@@ -99,6 +103,8 @@ power_pellet_time:	.byte 0				; Time left until power pellet wears off in second
 tick_count:			.byte 0				; How many ticks passed in current second
 ghosts_eaten:		.byte 0
 
+first_tick:			.byte 1				; Flag used for first tick after start/board reset
+reset_flag:			.byte 0				; Set to signal main loop to reset
 
 ; Initial board setup
 board_initial:
@@ -197,6 +203,7 @@ ptr_to_cursor_pos:			.word cursor_pos
 ptr_to_pacman_string:		.word pacman_string
 ptr_to_pacman_pos:			.word pacman_pos
 ptr_to_pacman_dir:			.word pacman_dir
+ptr_to_pacman_spawn:		.word pacman_spawn
 
 ptr_to_blinky_string:		.word blinky_string
 ptr_to_blinky_pos:			.word blinky_pos
@@ -239,6 +246,13 @@ ptr_to_power_pellet_time:	.word power_pellet_time
 ptr_to_tick_count:			.word tick_count
 ptr_to_ghosts_eaten:		.word ghosts_eaten
 
+ptr_to_ready_string:		.word ready_string
+ptr_to_paused_string:		.word paused_string
+ptr_to_clear_string:		.word clear_string
+
+ptr_to_first_tick:			.word first_tick
+ptr_to_reset_flag:			.word reset_flag
+
 
 ; Offset used for indexing in lookup table
 BOLD:		.equ 0x10
@@ -268,21 +282,21 @@ lab7:
 		; Initialize and draw board
 		bl init_board
 		bl draw_board
+		bl draw_entities
 
+		bl ready_set_go
 		bl resume_game		; Game needs to be paused when drawing board, so resume after drawing
 
-		; Load pacman position
-		ldr r2, ptr_to_pacman_pos	; Initialize pointer to pacman opsition
-		ldrb r0, [r2], #1			; r0 = pacman line
-		ldrb r1, [r2]				; r1 = pacman column
-
-		bl move_cursor
-
-		; Print pacman
-		ldr r0, ptr_to_pacman_string
-		bl output_string
-
 lab7_main_loop:
+
+		ldr r0, ptr_to_reset_flag	; Check if reset flag is set
+		ldrb r1, [r0]
+		cmp r1, #0
+		beq lab7_main_loop
+
+		mov r1, #0					; Clear reset flag
+		strb r1, [r0]
+		bl reset_board				; Reset board and start new life
 
 		b lab7_main_loop
 
@@ -462,7 +476,10 @@ Timer_Handler:
 		bl move_ghosts		; Update ghosts' position and redraw
 		bl check_ghost_coll
 		bl move_pacman		; Update pacman position and redraw
-		bl check_ghost_coll	; Checking twice to prevent jumping over
+
+		ldr r0, ptr_to_first_tick	; Set first tick flag to 0
+		mov r1, #0
+		strb r1, [r0]
 
 
 		;;;;;;;;;; Output lives count. For debugging
@@ -603,6 +620,15 @@ move_pacman:
 		ldrsb r4, [r3]			; r4 = line dir
 		ldrsb r5, [r3, #1]		; r5 = column dir
 
+		; If first tick, use dir 0, 0
+		ldr r3, ptr_to_first_tick
+		ldrb r3, [r3]
+		cmp r3, #1
+		bne pacman_not_first_tick
+		mov r4, #0
+		mov r5, #0
+
+pacman_not_first_tick:
 		; Update pacman position based on direction
 		add r0, r6, r4
 		add r1, r7, r5
@@ -621,8 +647,15 @@ move_pacman:
 		ldr r0, ptr_to_pacman_string
 		bl output_string
 
+		bl check_ghost_coll		; Need to check ghost before pellet to skip pellet if dead
+		ldr r0, ptr_to_reset_flag	; If need to reset(collided with ghost), skip pellet check
+		ldrb r0, [r0]
+		cmp r0, #1
+		beq move_pacman_exit
+
 		bl check_pellet
 
+move_pacman_exit:
 		POP {r4-r12, lr}
 		MOV pc, lr
 
@@ -957,14 +990,19 @@ pacman_dead:
 
 		; If lives = 0, set game over flag. Otherwise reset board
 		cmp r5, #0
-		bne not_game_over
+		beq set_game_over
+
+		; pause and set reset flag
+		bl pause_game
+		ldr r0, ptr_to_reset_flag
+		mov r1, #1
+		strb r1, [r0]
+		b exit_pacman_dead
+
+set_game_over:
 		mov r6, #1
 		ldr r4, ptr_to_is_game_over
 		strb r6, [r4]
-		b exit_pacman_dead
-
-not_game_over:
-		bl reset_board
 exit_pacman_dead:
 
 		POP {r4-r12, lr}
@@ -974,11 +1012,201 @@ exit_pacman_dead:
 reset_board:
 		PUSH {r4-r12, lr}
 
+		bl pause_game
+		bl erase_entities
 
+		ldr r0, ptr_to_first_tick	; Set first tick flag to 1
+		mov r1, #1
+		strb r1, [r0]
+
+		; need to restore tiles first
+		ldr r0, ptr_to_pacman_spawn
+		ldr r1, ptr_to_pacman_pos
+		ldrb r0, [r1]
+		ldrb r1, [r1, #1]
+		bl draw_tile
+
+		ldr r0, ptr_to_blinky_spawn
+		ldr r1, ptr_to_blinky_pos
+		ldrb r0, [r1]
+		ldrb r1, [r1, #1]
+		bl draw_tile
+
+		ldr r0, ptr_to_clyde_spawn
+		ldr r1, ptr_to_clyde_pos
+		ldrb r0, [r1]
+		ldrb r1, [r1, #1]
+		bl draw_tile
+
+		ldr r0, ptr_to_inky_spawn
+		ldr r1, ptr_to_inky_pos
+		ldrb r0, [r1]
+		ldrb r1, [r1, #1]
+		bl draw_tile
+
+		ldr r0, ptr_to_pinky_spawn
+		ldr r1, ptr_to_pinky_pos
+		ldrb r0, [r1]
+		ldrb r1, [r1, #1]
+		bl draw_tile
+
+
+		; return all entities to their spawnpoint
+		ldr r0, ptr_to_pacman_spawn
+		ldr r1, ptr_to_pacman_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
+
+		ldr r0, ptr_to_blinky_spawn
+		ldr r1, ptr_to_blinky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
+
+		ldr r0, ptr_to_clyde_spawn
+		ldr r1, ptr_to_clyde_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
+
+		ldr r0, ptr_to_inky_spawn
+		ldr r1, ptr_to_inky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
+
+		ldr r0, ptr_to_pinky_spawn
+		ldr r1, ptr_to_pinky_pos
+		ldrb r2, [r0]
+		ldrb r3, [r0, #1]
+		strb r2, [r1]
+		strb r3, [r1, #1]
+
+		; reset movement directions
+		ldr r0, ptr_to_pacman_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+		ldr r0, ptr_to_blinky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+		ldr r0, ptr_to_clyde_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+		ldr r0, ptr_to_inky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+		ldr r0, ptr_to_pinky_dir
+		mov r1, #0
+		mov r2, #1
+		strb r1, [r0]
+		strb r2, [r0, #1]
+
+		bl draw_entities
+		bl ready_set_go
+		bl resume_game
 
 		POP {r4-r12, lr}
 		MOV pc, lr
 
+
+; Prints "READY!", then after a short delay erases it
+ready_set_go:
+		PUSH {r4-r12, lr}
+
+		mov r0, #21		; position for ready string
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string	; set background to path
+		ldr r0, ptr_to_ready_string
+		bl output_string	; print ready string
+
+		mov  r4, #0x0000		; counter for short pause
+		movt r4, #0x0044
+ready_loop:
+		cmp r4, #0
+		beq ready_done
+		sub r4, r4, #1
+		b ready_loop
+ready_done:
+		mov r0, #21		; position for ready string
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_clear_string		; Erases ready
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; draw pacman and ghosts. To be used after resets so doesn't account for power pellet effect
+draw_entities:
+		PUSH {r4-r12, lr}
+
+		ldr r2, ptr_to_pacman_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_pacman_string
+		bl output_string
+
+		ldr r2, ptr_to_blinky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_blinky_string
+		bl output_string
+
+		ldr r2, ptr_to_clyde_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_clyde_string
+		bl output_string
+
+		ldr r2, ptr_to_inky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_inky_string
+		bl output_string
+
+		ldr r2, ptr_to_pinky_pos
+		ldrb r0, [r2]
+		ldrb r1, [r2, #1]
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string
+		ldr r0, ptr_to_pinky_string
+		bl output_string
+
+		POP {r4-r12, lr}
+		MOV pc, lr
 
 ; Checks if pacman needs to wrap-around map
 ; r0 = pacman line pos, r1 = pacman column pos
@@ -1055,6 +1283,15 @@ move_oneghost:
 		ldrsb r7, [r9]		; r7 = line dir
 		ldrsb r8, [r9, #1]	; r8 = column dir
 
+		; If first tick, use dir 0, 0
+		ldr r9, ptr_to_first_tick
+		ldrb r9, [r9]
+		cmp r9, #1
+		bne ghost_not_first_tick
+		mov r7, #0
+		mov r8, #0
+
+ghost_not_first_tick:
 		; Update ghost position based on direction
 		add r0, r5, r7
 		add r1, r6, r8
