@@ -558,9 +558,42 @@ not_wasd:
 
 
 Switch_Handler:
-        PUSH    {r4-r12, lr}
-        POP     {r4-r12, lr}
-        BX      lr
+		PUSH    {r4-r12, lr}
+
+		; clear PF4 interrupt
+		mov  r0, #0x541C
+		movt r0, #0x4002
+		mov r1, #1
+		lsl r1, r1, #4
+		str r1, [r0]
+
+		; toggle pause state
+		ldr r0, ptr_to_game_paused
+		ldrb r1, [r0]
+		cmp r1, #0
+		beq switch_pause
+
+switch_resume:
+		mov r0, #21		; position for paused string
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_clear_string
+		bl output_string	; set background to path
+		bl resume_game
+		b switch_done
+switch_pause:
+		mov r0, #21		; position for paused string
+		mov r1, #12
+		bl move_cursor
+		ldr r0, ptr_to_path_string
+		bl output_string	; set background to path
+		ldr r0, ptr_to_paused_string
+		bl output_string	; print ready string
+		bl pause_game
+switch_done:
+
+		POP     {r4-r12, lr}
+		BX      lr
 
 
 ; Moves cursor to position (line, column) where line=r0, column=r1.
