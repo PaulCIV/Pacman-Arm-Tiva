@@ -646,59 +646,103 @@ find_null_loop:
 
 
 move_pacman:
-		PUSH {r4-r12, lr}
+        PUSH {r4-r12, lr}
 
-		; Load pacman position
-		ldr r2, ptr_to_pacman_pos
-		ldrb r0, [r2]			; r0 = line pos
-		ldrb r1, [r2, #1]		; r1 = column pos
+        ; Load pacman position
+        ldr r2, ptr_to_pacman_pos
+        ldrb r0, [r2]            ; r0 = line pos
+        ldrb r1, [r2, #1]        ; r1 = column pos
 
-		mov r6, r0		; Preserve r0, r1 before move_cursor
-		mov r7, r1
+        mov r6, r0
+        mov r7, r1
+        ; Load pacman direction
+        ldr r3, ptr_to_pacman_dir
+        ldrsb r4, [r3]            ; r4 = line dir
+        ldrsb r5, [r3, #1]        ; r5 = column dir
 
-		; Load pacman direction
-		ldr r3, ptr_to_pacman_dir
-		ldrsb r4, [r3]			; r4 = line dir
-		ldrsb r5, [r3, #1]		; r5 = column dir
 
-		; If first tick, use dir 0, 0
-		ldr r3, ptr_to_first_tick
-		ldrb r3, [r3]
-		cmp r3, #1
-		bne pacman_not_first_tick
-		mov r4, #0
-		mov r5, #0
+        ldr r3, ptr_to_first_tick
+        ldrb r3, [r3]
+        cmp r3, #1
+        bne pacman_not_first_tick
+        mov r4, #0
+        mov r5, #0
 
 pacman_not_first_tick:
-		; Update pacman position based on direction
-		add r0, r6, r4
-		add r1, r7, r5
 
-		bl check_pacman_wrap	; Applies wrap and returns pos to r0, r1
+        add r0, r6, r4
+        add r1, r7, r5
 
-		; Store final pacman position
-		ldr r2, ptr_to_pacman_pos
-		strb r0, [r2]
-		strb r1, [r2, #1]
+        bl check_pacman_wrap
 
-		; Print pacman
-		bl move_cursor
-		ldr r0, ptr_to_path_string		; output path background because pacman will always be on path
-		bl output_string
-		ldr r0, ptr_to_pacman_string
-		bl output_string
+        mov r8, r0
+        mov r9, r1
+        bl check_wall            ; r0 = 1 if wall
+        cmp r0, #1
+        beq pacman_blocked
 
-		bl check_ghost_coll		; Need to check ghost before pellet to skip pellet if dead
-		ldr r0, ptr_to_reset_flag	; If need to reset(collided with ghost), skip pellet check
-		ldrb r0, [r0]
-		cmp r0, #1
-		beq move_pacman_exit
+        ; can move
+        mov r0, r8
+        mov r1, r9
+        b pacman_store_pos
 
-		bl check_pellet
+pacman_blocked:
+        ; wall so stay
+        mov r0, r6
+        mov r1, r7
+
+pacman_store_pos:
+        ;pacman final position
+        ldr r2, ptr_to_pacman_pos
+        strb r0, [r2]
+        strb r1, [r2, #1]
+
+        ; Print pacman
+        bl move_cursor
+        ldr r0, ptr_to_path_string
+        bl output_string
+        ldr r0, ptr_to_pacman_string
+        bl output_string
+
+        bl check_ghost_coll
+        ldr r0, ptr_to_reset_flag
+        ldrb r0, [r0]
+        cmp r0, #1
+        beq move_pacman_exit
+
+        bl check_pellet
 
 move_pacman_exit:
-		POP {r4-r12, lr}
-		MOV pc, lr
+        POP {r4-r12, lr}
+        MOV pc, lr
+check_wall:
+        PUSH {r4-r12, lr}
+
+        ; r0 = line, r1 = column
+        ; returns r0 = 1 if wall '#'
+
+        sub r0, r0, #1
+        sub r1, r1, #1
+
+        mov r2, #BOARD_WIDTH
+        mul r3, r0, r2
+        add r3, r3, r1
+
+        ldr r2, ptr_to_board_current
+        ldrb r0, [r2, r3]
+
+        cmp r0, #0x23        ; '#'
+        beq check_wall_is_wall
+
+        mov r0, #0            ; not wall
+        b check_wall_exit
+
+check_wall_is_wall:
+        mov r0, #1            ; wall
+
+check_wall_exit:
+        POP {r4-r12, lr}
+        MOV pc, lr
 
 
 ; Checks if pacman's position is on a pellet then updates game state
@@ -1371,16 +1415,6 @@ print_normal_ghost:
 		mov r0, r4				; move ghost pos pointer to r0
 		mov r1, r10				; move ghost dir pointer to r1
 		bl ghost_choose_path	; determine ghost new direction based on current pos
-
-		POP {r4-r12, lr}
-		MOV pc, lr
-
-
-
-check_wall:
-		PUSH {r4-r12, lr}
-
-
 
 		POP {r4-r12, lr}
 		MOV pc, lr
