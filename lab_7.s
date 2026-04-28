@@ -610,6 +610,19 @@ Timer_Handler:
 
 		bl move_ghosts		; Update ghosts' position and redraw
 		bl check_ghost_coll
+
+		; If pacman killed, stop here
+		ldr r0, ptr_to_reset_flag
+		ldrb r0, [r0]
+		cmp r0, #1
+		beq timer_handler_exit
+
+		; If game over, stop
+		ldr r0, ptr_to_is_game_over
+		ldrb r0, [r0]
+		cmp r0, #1
+		beq timer_handler_exit
+
 		bl move_pacman		; Update pacman position and redraw
 
 		ldr r0, ptr_to_first_tick	; Set first tick flag to 0
@@ -850,7 +863,13 @@ pacman_store_pos:
         bl output_string
 
         bl check_ghost_coll
+
         ldr r0, ptr_to_reset_flag
+        ldrb r0, [r0]
+        cmp r0, #1
+        beq move_pacman_exit
+
+        ldr r0, ptr_to_is_game_over
         ldrb r0, [r0]
         cmp r0, #1
         beq move_pacman_exit
@@ -865,6 +884,18 @@ check_wall:
 
         ; r0 = line, r1 = column
         ; returns r0 = 1 if wall '#'
+
+		cmp r0, #1
+        blt check_wall_is_wall
+
+        cmp r0, #33
+        bgt check_wall_is_wall
+
+        cmp r1, #1
+        blt check_wall_is_wall
+
+        cmp r1, #28
+        bgt check_wall_is_wall
 
         sub r0, r0, #1
         sub r1, r1, #1
@@ -1298,6 +1329,12 @@ set_game_over:
 		mov r6, #1				; Set game over flag
 		ldr r4, ptr_to_is_game_over
 		strb r6, [r4]
+
+		; Make sure main loop does not start a new round if reset flag is 1
+		ldr r0, ptr_to_reset_flag
+		mov r1, #0
+		strb r1, [r0]
+
 		bl pause_game
 
 		; print GAME OVER
@@ -1950,23 +1987,36 @@ next_level:
 ; r0, r1 = tile position to check
 ; return 0 if wall, otherwise 1 (so that i can just add return value in ghost_choose_path)
 ghost_check_wall:
-		PUSH {lr}
 
-		sub r0, r0, #1		; minus 1 because putty coords start from 1
+		PUSH {lr}
+		; check out of bounds just incase cause were checking for specific characters
+		cmp r0, #1
+		blt ghost_check_wall_is_wall
+		cmp r0, #33
+		bgt ghost_check_wall_is_wall
+		cmp r1, #1
+		blt ghost_check_wall_is_wall
+		cmp r1, #28
+		bgt ghost_check_wall_is_wall
+		sub r0, r0, #1
 		sub r1, r1, #1
 		mov r2, #BOARD_WIDTH
-		mul r0, r0, r2		; Calculate tile position in memory
+		mul r0, r0, r2
 		add r0, r0, r1
-
 		ldr r2, ptr_to_board_current
-		ldrb r1, [r2, r0]	; Load tile
+		ldrb r1, [r2, r0]
 		mov r0, #1
-		cmp r1, #0x23		; 0x23 = '#'
-		it eq
-		moveq r0, #0
-		cmp r1, #0x2D		; 0x2D = '-' (spawn exit logic handled in ghost_choose_path)
-		it eq
-		moveq r0, #0
+		cmp r1, #0x23		; '#'
+		beq ghost_check_wall_is_wall
+		cmp r1, #0x2D		; '-'
+		beq ghost_check_wall_is_wall
+		b ghost_check_wall_exit
+
+ghost_check_wall_is_wall:
+
+		mov r0, #0
+
+ghost_check_wall_exit:
 
 		POP {lr}
 		MOV pc, lr
