@@ -49,6 +49,9 @@ black_bg:		.string 0x10, 0x19, 0		; black background
 ready_string:	.string 0x10, 0x11, "READY!", 0
 paused_string:	.string 0x10, 0x11, "PAUSED", 0
 clear_string:	.string 0x10, 0x17, "      ", 0
+gameover_string:	.string 0x10, 0x11, "GAME  OVER", 0
+restart_string:		.string 0x10, 0x11, "R TO RESTART", 0
+quit_string:		.string 0x10, 0x11, "Q TO QUIT", 0
 
 
 ; Lookup table that references ANSI escape sequences
@@ -113,6 +116,8 @@ reset_flag:			.byte 0				; Set to signal main loop to reset
 rng_seed:			.word 0x12345678	; Seed for random number generator
 
 ghost_turn_choices:	.byte 0, 0, 0		; forward, left, right
+
+game_over_behavior:	.byte 0				; 0 = waiting, 1 = quit, 2 = restart
 
 ; Initial board setup
 board_initial:
@@ -265,11 +270,17 @@ ptr_to_ready_string:		.word ready_string
 ptr_to_paused_string:		.word paused_string
 ptr_to_clear_string:		.word clear_string
 
+ptr_to_gameover_string:		.word gameover_string
+ptr_to_restart_string:		.word restart_string
+ptr_to_quit_string:			.word quit_string
+
 ptr_to_first_tick:			.word first_tick
 ptr_to_reset_flag:			.word reset_flag
 
 ptr_to_rng_seed:			.word rng_seed
 ptr_to_ghost_turn_choices:	.word ghost_turn_choices
+
+ptr_to_game_over_behavior:	.word game_over_behavior
 
 ; Offset used for indexing in lookup table
 BOLD:		.equ 0x10
@@ -301,17 +312,23 @@ lab7:
 		bl uart_interrupt_init
 		bl timer_interrupt_init
 
+game_start:
 		; Initialize and draw board
 		bl init_board
 		bl draw_board
-		bl draw_entities
+		;bl draw_entities
 
 		bl update_lives_led	; illuminate alice edubase leds
 
-		bl ready_set_go
-		bl resume_game		; Game needs to be paused when drawing board, so resume after drawing
+		bl reset_board
+		;bl ready_set_go
+		;bl resume_game		; Game needs to be paused when drawing board, so resume after drawing
 
 lab7_main_loop:
+		ldr r0, ptr_to_is_game_over
+		ldrb r0, [r0]
+		cmp r0, #1
+		beq game_over_loop
 
 		ldr r0, ptr_to_reset_flag	; Check if reset flag is set
 		ldrb r1, [r0]
@@ -324,6 +341,72 @@ lab7_main_loop:
 
 		b lab7_main_loop
 
+game_over_loop:						; Loop to wait for user input
+		ldr r0, ptr_to_game_over_behavior	; Load user input after game over
+		ldrb r0, [r0]
+
+		cmp r0, #0		; If user didn't press 'q' or 'r', keep looping
+		beq game_over_loop
+
+		cmp r0, #1		; If user pressed 'q', exit program
+		beq lab7_exit
+
+		; User pressed 'r'. Restart game from start
+		bl full_reset
+		b game_start
+
+		b game_over_loop
+
+lab7_exit:
+		POP {r4-r12, lr}
+		MOV pc, lr
+
+
+; Resets variables and re-initializes board
+full_reset:
+		PUSH {r4-r12, lr}
+
+		ldr r0, ptr_to_wall_string	; So that ansi is reset to black bg
+		bl output_string
+
+		mov r0, #0x0C		; Form feed. clears screen
+		bl output_character
+
+		; reset timer interval
+		mov  r0, #0x0028		; Setup interval period via GPTMTAILR
+		movt r0, #0x4003
+		mov  r1, #0x0900		; 4,000,000 in hex. 0.25 second period
+		movt r1, #0x003D
+		str r1, [r0]
+
+		; init lives
+		ldr r0, ptr_to_lives
+		mov r1, #4
+		strb r1, [r0]
+		bl update_lives_led
+
+		; init score
+		ldr r0, ptr_to_score
+		mov r1, #0
+		str r1, [r0]
+
+		; init game over flags
+		ldr r0, ptr_to_is_game_over
+		mov r1, #0
+		strb r1, [r0]
+
+		ldr r0, ptr_to_game_over_behavior
+		mov r1, #0
+		strb r1, [r0]
+
+		;ldr r0, ptr_to_first_tick	; Set first tick flag to 1
+		;mov r1, #1
+		;strb r1, [r0]
+
+		; re-initialize and draw board
+		;bl init_board
+		;bl draw_board
+		;bl reset_board			; reset_board also initializes pacman and ghost positions
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -391,13 +474,15 @@ draw_board_cursor_update:	; Increment col, line counter
 		bge draw_board_exit
 		b draw_board_line_loop
 draw_board_exit:
-		mov r0, #2			; Pos for score on board
-		mov r1, #12
-		bl move_cursor
-		ldr r0, ptr_to_black_bg
-		bl output_string
-		ldr r0, ptr_to_score_string
-		bl output_string
+		mov r0, #0
+		bl update_score		; Draw score
+		;mov r0, #2			; Pos for score on board
+		;mov r1, #12
+		;bl move_cursor
+		;ldr r0, ptr_to_black_bg
+		;bl output_string
+		;ldr r0, ptr_to_score_string
+		;bl output_string
 
 		POP {r4-r12, lr}
 		MOV pc, lr
@@ -566,9 +651,27 @@ update_dir_right:
 store_new_dir:
 		strb r1, [r0]
 		strb r2, [r0, #1]
+		b UART0_Handler_exit
 
 not_wasd:
+		ldr r2, ptr_to_is_game_over		; If game not over, exit handler
+		ldrb r2, [r2]
+		cmp r2, #1
+		bne UART0_Handler_exit
 
+		mov r1, #0			; initialize game over behavior new value
+		cmp r0, #0x71		; 'q'
+		it eq
+		moveq r1, #1
+
+		cmp r0, #0x72		; 'r'
+		it eq
+		moveq r1, #2
+
+		ldr r0, ptr_to_game_over_behavior	; store new game over behavior
+		strb r1, [r0]
+
+UART0_Handler_exit:
         POP     {r4-r12, lr}
         BX      lr
 
@@ -1138,12 +1241,33 @@ pacman_dead:
 		ldr r0, ptr_to_reset_flag
 		mov r1, #1
 		strb r1, [r0]
+
 		b exit_pacman_dead
 
 set_game_over:
-		mov r6, #1
+		mov r6, #1				; Set game over flag
 		ldr r4, ptr_to_is_game_over
 		strb r6, [r4]
+		bl pause_game
+
+		; print GAME OVER
+		mov r0, #21		; output game over string
+		mov r1, #10
+		bl move_cursor
+		ldr r0, ptr_to_gameover_string
+		bl output_string
+
+		mov r0, #23		; output restart string
+		mov r1, #2
+		bl move_cursor
+		ldr r0, ptr_to_restart_string
+		bl output_string
+
+		mov r0, #23		; output quit string
+		mov r1, #16
+		bl move_cursor
+		ldr r0, ptr_to_quit_string
+		bl output_string
 exit_pacman_dead:
 
 		POP {r4-r12, lr}
@@ -1285,6 +1409,18 @@ reset_board:
 		mov r2, #1
 		strb r1, [r0]
 		strb r2, [r0, #1]
+
+		; initialize ghost states
+		mov r1, #LEAVING_BOX
+
+		ldr r0, ptr_to_blinky_state
+		strb r1, [r0]
+		ldr r0, ptr_to_clyde_state
+		strb r1, [r0]
+		ldr r0, ptr_to_inky_state
+		strb r1, [r0]
+		ldr r0, ptr_to_pinky_state
+		strb r1, [r0]
 
 		bl draw_entities
 		bl ready_set_go
